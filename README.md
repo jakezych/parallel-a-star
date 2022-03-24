@@ -4,7 +4,7 @@
 ### Summary: ###
 
 
-We are going to parallelize the sweep hull variant of the Delaunay triangulation algorithm. Using this triangulation algorithm, we plan to generate a Voronoi diagram that will be colored using Perlin noise to create a 2D terrain map. By parallelizing the Delaunay triangulation algorithm using both openMPI and OpenMP, we will analyze which parallel framework results in the best speedup.
+We are going to parallelize the sweep hull variant of the Delaunay triangulation algorithm. Using this triangulation algorithm, we plan to generate a Voronoi diagram that will be colored using Perlin noise to create a 2D terrain map. By parallelizing the Delaunay triangulation algorithm using both OpenMPI and OpenMP, we will analyze which parallel framework results in the best speedup.
 
 
 ### Background: ###
@@ -55,7 +55,7 @@ We plan on parallelizing a sequential implementation using both OpenMP and openM
 ### Resources: ### 
 We plan on referencing some existing C++ implementations of the Delaunay triangulation to help us familiarize ourselves with the sequential implemenation. The variant of the algorithm we plan on implementing does not have many resources detailing the algorithm at a pseudocode level, so we may also pull certain aspects of the sequential code we find online to create our initial sequential implementation. This will allow us to focus more on parallelization in this project. 
 
-We will use both openMP and openMPI to parallelize the algorithm. We may also use a C++ graphics rendering or Perlin noise package to assist us in rendering the terrain. 
+We will use both OpenMP and OpenMPI to parallelize the algorithm. We may also use a C++ graphics rendering or Perlin noise package to assist us in rendering the terrain. 
 
 Our hardware for testing will consist of:
 * GHC Machines (Intel(R) Core(TM) i7-9700 CPU @ 3.00GHz, 8 cores)
@@ -66,7 +66,7 @@ Our hardware for testing will consist of:
     * Working parallel implementation of Delaunay Triangulation in one of the two frameworks we plan on using
     * Rendering of the Voronoi diagram 
 * *100%* 
-    * Working parallel implementation of Delaunay Triangulation in both openMP and openMPI 
+    * Working parallel implementation of Delaunay Triangulation in both OpenMP and OpenMPI 
     * Rendering of the Voronoi diagram 
     * Perlin noise used to generate a 2D terrain map with biomes, islands, and elevation
 * *125%*
@@ -81,8 +81,8 @@ Our hardware for testing will consist of:
 | Week                 | Goal     | 
 | --------             | -------- | 
 | Week 1 *(3/27-4/3)*  | Research and write sequential implementation of Delaunay Triangulation                    |
-| Week 2 *(3/27-4/3)*  | Write Voronoi diagram generation and parallelize Delaunay Triangulation using openMP      |
-| Week 3 *(4/10-4/17)* | Create checkpoint report and parallelize Delaunay Triangulation using openMPI             |
+| Week 2 *(3/27-4/3)*  | Write Voronoi diagram generation and parallelize Delaunay Triangulation using OpenMP      |
+| Week 3 *(4/10-4/17)* | Create checkpoint report and parallelize Delaunay Triangulation using OpenMPI             |
 | Week 4 *(4/17-4/24)* | Write terrain generation and measure final performance                                    |
 | Week 5 *(4/24-4/29)* | Summarize results in a final report and presentation                                      |
 
