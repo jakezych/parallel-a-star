@@ -16,7 +16,11 @@ Given a set of `P` points, the Delaunay triangulation algorithm is used to gener
 
 *https://en.wikipedia.org/wiki/Delaunay_triangulation*
 
-Voronoi diagrams are frequently used as the basis for terrain generation in video games and landscape visualization. By using Perlin noise to color the cells of the Voronoi diagram, one can generate a semi-realistic looking 2D terrain with features like biomes, islands, and elevation faster than current sequential implementations. 
+Voronoi diagrams are frequently used as the basis for terrain generation in video games and landscape visualization. By using Perlin noise to color the cells of the Voronoi diagram, one can generate a semi-realistic looking 2D terrain with features like biomes, islands, and elevation faster than current sequential implementations. Perlin noise is a type of gradient noise algorithm that is used in procedural terrain generation to color pixels in a manner that is consistent with realistic terrain. An example of a voronoi map colored using Perlin noise is below. 
+
+![](https://i.imgur.com/GDyOUvf.png)
+
+*https://www.redblobgames.com/x/2022-voronoi-maps-tutorial/*
 
 We suspect that the generation of the Voronoi diagram using Delaunay triangulation is the most computationally intensive part of 2D terrain generation, so our focus will be on parallelizing this aspect. We will likely also parallelize the coloring of the terrain but this is a computationally easier and less interesting problem to parallelize, so it will be a smaller focus of the project. 
 
@@ -81,7 +85,7 @@ Our hardware for testing will consist of:
 | Week                 | Goal     | 
 | --------             | -------- | 
 | Week 1 *(3/27-4/3)*  | Research and write sequential implementation of Delaunay Triangulation                    |
-| Week 2 *(3/27-4/3)*  | Write Voronoi diagram generation and parallelize Delaunay Triangulation using OpenMP      |
+| Week 2 *(4/3-4/10)*  | Write Voronoi diagram generation and parallelize Delaunay Triangulation using OpenMP      |
 | Week 3 *(4/10-4/17)* | Create checkpoint report and parallelize Delaunay Triangulation using OpenMPI             |
 | Week 4 *(4/17-4/24)* | Write terrain generation and measure final performance                                    |
 | Week 5 *(4/24-4/29)* | Summarize results in a final report and presentation                                      |
@@ -93,3 +97,4 @@ Our hardware for testing will consist of:
 * https://github.com/delfrrr/delaunator-cpp
 * https://github.com/tlvb/shull
 * https://www.redblobgames.com/x/2022-voronoi-maps-tutorial/
+* https://en.wikipedia.org/wiki/Perlin_noise
