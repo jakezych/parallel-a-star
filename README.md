@@ -1,6 +1,6 @@
-Parallelization of Bi-Directional A* Traversal
+# Parallelization of Bi-Directional A* Traversal #
 
-**By: William Foy (wfoy) and Jacob Zych (jzych)**
+## By: William Foy (wfoy) and Jacob Zych (jzych) ##
  
 ### Summary: ###
 
