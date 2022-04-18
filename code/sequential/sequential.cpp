@@ -1,13 +1,14 @@
 #include "../graph.h"
-#include <cstdio>
-#include <cstdlib>
 #include <unistd.h>
 #include <ctype.h>
+#include <cstdio>
+#include <cstdlib>
+#include <queue>
 
 void printGraph(graph_t graph) {
   for (int i = 0; i < graph.dim; i++) {
     for (int j = 0; j < graph.dim; j++) {
-      printf("%d ", graph.nodes[i*graph.dim + j]);
+      printf("%d ", graph.grid[i*graph.dim + j]);
     }
     printf("\n");
   }
@@ -24,13 +25,14 @@ graph_t readGraph(char *inputFilename) {
   // Read the dimension of the grid
   fscanf(input, "%d\n", &dim);
 
-  int *nodes = (int *)malloc(dim*dim*sizeof(int));
+  int *grid = (int *)malloc(dim*dim*sizeof(int));
 
   // account for spaces by multiplying by 2
   int lineSize = 2*dim + 1;
   char* line = (char *)malloc(lineSize);
   int lineCount = 0;
   int nodeCount = 0;
+
   // read row by row
   while (fgets(line, lineSize, input))  {
     nodeCount = 0;
@@ -38,14 +40,24 @@ graph_t readGraph(char *inputFilename) {
     for (int i = 0; i < lineSize - 2; i++) {
       if (!isspace(line[i])) {
         // convert char to int
-        nodes[dim*lineCount + nodeCount] = line[i] - '0';
+        grid[dim*lineCount + nodeCount] = line[i] - '0';
         nodeCount++;
       }
     }
     lineCount++;
   }
   fclose(input);
-  return {dim, nodes};
+  return {dim, grid};
+}
+
+int manhattenDistance(node_t source, node_t target) {
+  return std::abs(source.row - target.row) + std::abs(source.col + target.col);
+}
+
+
+int *aStar(node_t source, node_t target, graph_t graph) {
+  std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>pq; 
+
 }
 
 int main(int argc, char *argv[]) {
