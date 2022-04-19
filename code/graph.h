@@ -1,10 +1,32 @@
 #ifndef _GRAPH_H
 #define _GRAPH_H
 
-typedef struct {
+#include <boost/functional/hash.hpp>
+
+struct node_t {
   int row; // row where the node is located
   int col; // col where the node is located
-} node_t;
+
+  bool operator==(const node_t &other) const
+  { return (row == other.row
+            && col == other.col);
+  }
+};
+
+typedef struct
+{
+  std::size_t operator()(const node_t& n) const
+  {
+    // Start with a hash value of 0
+    std::size_t seed = 0;
+
+    // Modify 'seed' by XORing and bit-shifting
+    boost::hash_combine(seed,boost::hash_value(n.row));
+    boost::hash_combine(seed,boost::hash_value(n.col));
+
+    return seed;
+  }
+} node_hash_t;
 
 typedef struct {
   int cost;   // the current path score f(n) for the node 
