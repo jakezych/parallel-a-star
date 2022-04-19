@@ -50,14 +50,19 @@ graph_t readGraph(char *inputFilename) {
   return {dim, grid};
 }
 
+// heuristic function 
 int manhattenDistance(node_t source, node_t target) {
-  return std::abs(source.row - target.row) + std::abs(source.col + target.col);
+  return std::abs(source.row - target.row) + std::abs(source.col - target.col);
 }
 
 
 int *aStar(node_t source, node_t target, graph_t graph) {
-  std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>pq; 
+  std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>openSet; 
+  // put starting node into openSet
+  openSet.push({manhattenDistance(source, target), source});
 
+  // initialize other helper data structures
+  
 }
 
 int main(int argc, char *argv[]) {
