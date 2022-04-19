@@ -1,4 +1,4 @@
-Parallelization of A* Search Algorithm
+# Parallelization of A* Search Algorithm 
 
 **By: William Foy (wfoy) and Jacob Zych (jzych)**
  
