@@ -51,7 +51,7 @@ graph_t readGraph(char *inputFilename) {
 }
 
 int manhattenDistance(node_t source, node_t target) {
-  return std::abs(source.row - target.row) + std::abs(source.col + target.col);
+  return std::abs(source.row - target.row) + std::abs(source.col - target.col);
 }
 
 
