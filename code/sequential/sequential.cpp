@@ -7,6 +7,7 @@
 #include <string>
 #include <unordered_map>
 #include <climits>
+#include <unordered_set>
 
 void printGraph(graph_t graph) {
   for (int i = 0; i < graph.dim; i++) {
@@ -63,19 +64,83 @@ graph_t readGraph(int x1, int y1, int x2, int y2, char *inputFilename) {
 }
 
 // heuristic function 
-int manhattenDistance(node_t source, node_t target) {
+int h(node_t source, node_t target) {
+  // manhattenDistance
   return std::abs(source.row - target.row) + std::abs(source.col - target.col);
 }
 
 
-int *aStar(node_t source, node_t target, graph_t graph) {
-  std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>pq;
-  std::unordered_map<node_t, node_t> cameFrom;
-  std::unordered_map<node_t, int> gScore;
-  std::unordered_map<node_t, int> fScore;
+std::vector<node_t> getNeighbors (node_t current, graph_t graph) {
+  //        i - dim
+  // i - 1       i    i + 1
+  //        i + dim 
+  // bounds check -> [0, dim*dim)
+  std::vector<node_t> result;
 
-  pq.push({manhattenDistance(source, target), source});
-  gScore.insert({source, INT_MAX});
+  int i = current.row*graph.dim + current.col;
+  // element above
+  if (current.row != 0 && graph.grid[i - graph.dim]) {
+    result.push_back({current.row - 1, current.col});
+  }
+  // element below
+  if (current.row < graph.dim - 1 && graph.grid[i + graph.dim]) {
+    result.push_back({current.row + 1, current.col});
+  }
+  // element to the left 
+  if (current.col != 0 && graph.grid[i - 1]) {
+    result.push_back({current.row, current.col - 1});
+  }
+  // element to the right
+  if (current.col < graph.dim - 1 && graph.grid[i + 1]) {
+    result.push_back({current.row, current.col + 1});
+  }
+  return result;
+}
+
+int *aStar(node_t source, node_t target, graph_t graph) {
+  std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo> pq;
+  std::unordered_set<node_t, node_hash_t> openSet;
+  std::unordered_map<node_t, node_t, node_hash_t> cameFrom;
+  std::unordered_map<node_t, int, node_hash_t> gScore;
+  std::unordered_map<node_t, int, node_hash_t> fScore;
+
+  // initialize open set 
+  pq.push({h(source, target), source});
+  openSet.insert(source);
+
+  // gScore represents the cost of the cheapest path from start to current node
+  gScore.insert({source, 0});
+  // fScore represents the total cost f(n) = g(n) + h(n) for any node
+  fScore.insert({source, h(source, target)});
+
+  while (!pq.empty()) {
+    node_t current = pq.top().node;
+    // find solution
+    if (current == target) {
+      return NULL;
+      // return reconstructPath(cameFrom, current);
+    }
+
+    pq.pop();
+    openSet.erase(current);
+    std::vector<node_t> neighbors = getNeighbors(current, graph);
+    for (node_t neighbor: neighbors) { 
+      int neighborScore = gScore.find(neighbor) != gScore.end() ? gScore.at(neighbor) : INT_MAX;
+      // every edge has weight 1
+      int currentScore = gScore.at(current) + 1;
+      if (currentScore < neighborScore) {
+        cameFrom.insert({neighbor, current});
+        gScore.insert({neighbor, currentScore});
+        int neighborfScore = currentScore + h(neighbor, target);
+        fScore.insert({neighbor, neighborfScore});
+        if (openSet.find(neighbor) == openSet.end()) {
+          openSet.insert(neighbor);
+          pq.push({neighborfScore, neighbor});
+        }
+      }
+    }
+  assert(pq.size() == openSet.size());
+  }
 
   return NULL;
 }

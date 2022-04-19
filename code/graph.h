@@ -13,8 +13,7 @@ struct node_t {
   }
 };
 
-typedef struct
-{
+struct node_hash_t {
   std::size_t operator()(const node_t& n) const
   {
     // Start with a hash value of 0
@@ -26,7 +25,7 @@ typedef struct
 
     return seed;
   }
-} node_hash_t;
+};
 
 typedef struct {
   int cost;   // the current path score f(n) for the node 
