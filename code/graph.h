@@ -34,8 +34,8 @@ typedef struct {
 
 struct CompareNodeInfo {
     bool operator()(node_info_t const & v1, node_info_t const & v2) {
-        // returns true if v1 has a smaller path score f(n) than v2
-        return v1.cost < v2.cost;
+        // returns true if v1 has a larger path score f(n) than v2
+        return v1.cost > v2.cost;
     }
 };
 

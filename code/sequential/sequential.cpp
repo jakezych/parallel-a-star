@@ -198,14 +198,3 @@ int main(int argc, char *argv[]) {
   printf("\n");
 }
 
-// how are we taking input to main? 
- // read from and write output (path / cost) to file? 
- // graph input file format: grid 
-  // can read directly into our adjacency matrix
-// how are we defining graphs? 
-  // adjacency matrix (might be easier to work with, space inefficient for sparse graph)
-  // adjacency list (harder to work with, need to encode edge weights)
-// how are we taking input to a* 
-  // pass start node, target node, and graph
-
-
