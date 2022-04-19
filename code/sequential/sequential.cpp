@@ -97,13 +97,23 @@ std::vector<node_t> getNeighbors (node_t current, graph_t graph) {
   return result;
 }
 
-int *aStar(node_t source, node_t target, graph_t graph) {
+std::vector<node_t> reconstructPath(std::unordered_map<node_t, node_t, node_hash_t> cameFrom, node_t current) {
+  std::vector<node_t> path;
+  path.push_back(current);
+  while (cameFrom.find(current) != cameFrom.end()) {
+    current = cameFrom.at(current);
+    path.push_back(current);
+  }
+  return path;
+}
+
+std::vector<node_t> aStar(node_t source, node_t target, graph_t graph) {
   std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo> pq;
   std::unordered_set<node_t, node_hash_t> openSet;
   std::unordered_map<node_t, node_t, node_hash_t> cameFrom;
   std::unordered_map<node_t, int, node_hash_t> gScore;
   std::unordered_map<node_t, int, node_hash_t> fScore;
-
+  std::vector<node_t> path;
   // initialize open set 
   pq.push({h(source, target), source});
   openSet.insert(source);
@@ -117,8 +127,8 @@ int *aStar(node_t source, node_t target, graph_t graph) {
     node_t current = pq.top().node;
     // find solution
     if (current == target) {
-      return NULL;
-      // return reconstructPath(cameFrom, current);
+      path = reconstructPath(cameFrom, current);
+      break;
     }
 
     pq.pop();
@@ -142,7 +152,7 @@ int *aStar(node_t source, node_t target, graph_t graph) {
   assert(pq.size() == openSet.size());
   }
 
-  return NULL;
+  return path;
 }
 
 int main(int argc, char *argv[]) {
@@ -179,7 +189,13 @@ int main(int argc, char *argv[]) {
   graph_t graph = readGraph(x1, y1, x2, y2, inputFilename);
   printGraph(graph);
 
-  int *ret = aStar({x1, y1}, {x2, y2}, graph);
+  std::vector<node_t> ret = aStar({x1, y1}, {x2, y2}, graph);
+
+  for (auto n = ret.rbegin(); n != ret.rend(); n++) {
+
+    printf("(%d, %d) ", n->row, n->col);
+  }
+  printf("\n");
 }
 
 // how are we taking input to main? 
