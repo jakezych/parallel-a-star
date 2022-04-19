@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <queue>
+#include <string>
+#include <unordered_map>
 
 void printGraph(graph_t graph) {
   for (int i = 0; i < graph.dim; i++) {
@@ -13,7 +15,7 @@ void printGraph(graph_t graph) {
     printf("\n");
   }
 }
-graph_t readGraph(char *inputFilename) {
+graph_t readGraph(int x1, int y1, int x2, int y2, char *inputFilename) {
   int dim; 
 
 	FILE *input = fopen(inputFilename, "r");
@@ -24,6 +26,15 @@ graph_t readGraph(char *inputFilename) {
 
   // Read the dimension of the grid
   fscanf(input, "%d\n", &dim);
+
+  if (x1 < 0 || x1 >= dim || y1 < 0 || y1 >= dim) {
+    printf("first path point dimension error: %d, %d out of bounds for graph of dim %d\n", x1, y1, dim);
+    return {};
+  }
+  if (x2 < 0 || x2 >= dim || y2 < 0 || y2 >= dim) {
+    printf("second path point dimension error: %d, %d out of bounds for graph of dim %d\n", x2, y2, dim);
+    return {};
+  }
 
   int *grid = (int *)malloc(dim*dim*sizeof(int));
 
@@ -56,15 +67,26 @@ int manhattenDistance(node_t source, node_t target) {
 
 
 int *aStar(node_t source, node_t target, graph_t graph) {
-  std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>pq; 
+  std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>pq;
+  std::unordered_map<node_t, node_t> cameFrom;
+  std::unordered_map<node_t, int> gScore;
+  std::unordered_map<node_t, int> fScore;
 
+  pq.push({0, source});
+  gScore.insert({source, 0});
+
+  return NULL;
 }
 
 int main(int argc, char *argv[]) {
   int opt = 0;
   char *inputFilename = NULL;
-
+  int x1 = -1;
+  int y1 = -1;
+  int x2 = -1;
+  int y2 = -1;
   // Read command line arguments
+
   do {
     opt = getopt(argc, argv, "f:");
     switch (opt) {
@@ -78,13 +100,19 @@ int main(int argc, char *argv[]) {
     }
   } while (opt != -1);
 
-  if (inputFilename == NULL) {
-      printf("Usage: %s -f <filename>\n", argv[0]);
+  if (inputFilename == NULL || argc < 7) {
+      printf("Usage: %s -f <filename> <x1> <y1> <x2> <y2>\n", argv[0]);
       return -1;
   }
+  x1 = std::stoi(argv[3]);
+  y1 = std::stoi(argv[4]);
+  x2 = std::stoi(argv[5]);
+  y2 = std::stoi(argv[6]);
 
-  graph_t graph = readGraph(inputFilename);
+  graph_t graph = readGraph(x1, y1, x2, y2, inputFilename);
   printGraph(graph);
+
+  int *ret = aStar({x1, y1}, {x2, y2}, graph);
 }
 
 // how are we taking input to main? 
