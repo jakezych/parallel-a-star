@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
 
   std::vector<node_t> ret = aStar(source, target, graph);
 
-  writeOutput(inputFilename, graph, ret, source, target);
+  writeOutput(inputFilename, graph, ret);
 }
 
 // TODO: testing infrastructure, larger and more varied outputs 
