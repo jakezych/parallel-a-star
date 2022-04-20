@@ -1,5 +1,6 @@
 import logging
 import sys
+import heapq
 
 FORMAT = '%(asctime)-15s - %(levelname)s - %(module)10s:%(lineno)-5d - %(message)s'
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, format=FORMAT)
@@ -112,6 +113,95 @@ def validatePath(size, path, grid):
 
   return True
 
+class NodeInfo():
+  def __init__(self, node, dist):
+    self.node = node
+    self.dist = dist
+
+  def __repr__(self):
+    return f'(({self.node[0]}, {self.node[1]}), {self.dist})'
+
+  def __lt__(self, other):
+    return self.dist < other.dist
+
+
+def neighbors(node, grid):
+  neighbors = []
+
+  # up
+  if node[0] > 0 and grid[node[0] - 1][node[1]] != 0:
+    neighbors.append((node[0] - 1, node[1]))
+  # down
+  if node[0] < len(grid) - 1 and grid[node[0] + 1][node[1]] != 0:
+    neighbors.append((node[0] + 1, node[1]))
+  # left
+  if node[1] > 0 and grid[node[0]][node[1] - 1] != 0:
+    neighbors.append((node[0], node[1] - 1))
+  # right
+  if node[1] < len(grid) - 1 and grid[node[0]][node[1] + 1] != 0:
+    neighbors.append((node[0], node[1] + 1))
+    
+  return neighbors
+
+def reconstructPath(prev, target, source):
+  path = []
+  node = target
+  if prev.get(node) or node == source:
+    while node: 
+      path = [node] + path
+      node = prev.get(node)
+  return path
+
+def dijkstra(grid, source, target):
+  dist = dict()
+  prev = dict()
+  pq = [] 
+  heapq.heapify(pq)
+  openSet = set()
+
+  for i in range(len(grid)):
+    for j in range(len(grid)):
+      if (i, j) == source:
+        dist[(i, j)] = 0
+        heapq.heappush(pq, NodeInfo((i, j), 0))
+      else:
+        dist[(i, j)] = float('inf')
+        heapq.heappush(pq, NodeInfo((i, j), float('inf')))
+      prev[(i, j)] = None
+      openSet.add((i, j))
+
+  while len(pq) != 0:
+    cur = heapq.heappop(pq)
+    node = cur.node
+    openSet.remove(node)
+    if node == target:
+      return reconstructPath(prev, node, source)
+
+    for neighbor in neighbors(node, grid):
+      if neighbor in openSet:
+        newCost = dist.get(node) + 1
+        if newCost < dist.get(neighbor):
+          dist[neighbor] = newCost
+          prev[neighbor] = node
+          heapq.heappush(pq, NodeInfo(neighbor, newCost))
+
+  return []
+
+def checkOptimality(path, grid):
+  source = path[0]
+  target = path[-1]
+  optimalPath = dijkstra(grid, source, target)
+  if len(optimalPath) == 0:
+    print("no solution")
+    return False
+
+  if len(optimalPath) < len(path):
+    LOG.error(f'''There exists a more optimal path with length: {len(optimalPath)}''')
+    print(optimalPath)
+    return False
+  
+  print('path is optimal')
+
 def main(args):
     success, size, path = readSolution(args)
     if not success:
@@ -120,15 +210,8 @@ def main(args):
     if not success:
       return False
     validatePath(size, path, grid)
-    #checkOptimality(path, grid)
     print("solution is valid")
+    checkOptimality(path, grid)
     
-
 if __name__ == '__main__':
     main(parseArgs())
-
-# read from input file and save to 2d list
-# follow path on graph and count 
-# check if path is valid (edges exist) and if length is the same 
-# run dijkstra's algorithm and compare cost to see if there exists a more optimal 
-# solution
