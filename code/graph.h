@@ -51,13 +51,4 @@ typedef struct {
                 */
 } graph_t;
 
-
-/* 
-  Reads the graph from the input file with the inputted name. The first line of
-  the file represents the dimenensions of the grid (i.e. 5 => 5x5). Graphs are
-  represented as adjacency matrices where a 1 at graph[i][j] corresponds to 
-  an edge with weight 1 between vertex i and j and 0 corresponds to no edge.
-*/
-graph_t readGraph(char *inputFilename);
-
 #endif 
