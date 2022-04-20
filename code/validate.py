@@ -83,6 +83,35 @@ def readGrid(args):
   return True, grid
 
 
+
+def isAdjacent(v1, v2):
+  return (abs(v1[0] - v2[0]) != 1) or (abs(v1[1] - v2[1]) != 1)
+
+def validatePath(size, path, grid):
+  if size == len(path):
+    LOG.error(f'''outputted size and true path length mismatch size: {size} != length of path: {len(path)}''')
+    return False
+  if len(path) == 1: 
+    LOG.error('''path only contains a single element''')
+    return False
+
+  prev = path[0]
+  if grid[prev[0]][prev[1]] != 1:
+    LOG.error('''invalid starting node''')
+    return False
+
+  for i in range(1, len(path)):
+    cur = path[i]
+    if grid[cur[0]][cur[1]] != 1:
+      LOG.error(f'''path includes a node with no edge to it ({cur[0]}, {cur[1]})''')
+      return False
+    if not isAdjacent(prev, cur):
+      LOG.error(f'''path includes an illegal move from: ({prev[0]}, {prev[1]}) to: ({cur[0]}, {cur[1]})''')
+      return False
+    prev = cur
+
+  return True
+
 def main(args):
     success, size, path = readSolution(args)
     if not success:
@@ -90,11 +119,9 @@ def main(args):
     success, grid = readGrid(args)
     if not success:
       return False
-    print(size)
-    print(path)
-    print(grid)
-    #validatePath(path, grid)
+    validatePath(size, path, grid)
     #checkOptimality(path, grid)
+    print("solution is valid")
     
 
 if __name__ == '__main__':
