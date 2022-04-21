@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <climits>
 #include <unordered_set>
+#include <assert.h>
 
 // heuristic function 
 int h(node_t source, node_t target) {
@@ -17,28 +18,30 @@ int h(node_t source, node_t target) {
  * returns the neighbors of the current node as a vector. Checks whether or
  * not they exist (if they are within the grid and equal to 1)
  */
-std::vector<node_t> getNeighbors(node_t current, graph_t graph, std::vector<node_t> neighbors) {
+std::vector<node_t> getNeighbors(node_t current, graph_t *graph, std::vector<node_t> neighbors) {
   printf("size of neighbors at beginning of loop: %d\n", neighbors.size());
-  int i = current.row*graph.dim + current.col;
+  int i = current.row*graph->dim + current.col;
   printf("current i: %d \n", i);
   // element above
-  if (current.row != 0 && graph.grid[i - graph.dim]) {
+  if (current.row != 0 && graph->grid[i - graph->dim]) {
     neighbors.push_back({current.row - 1, current.col});
   }
   printf("elem above\n");
   // element below
-  if (current.row < graph.dim - 1 && graph.grid[i + graph.dim]) {
+  if (current.row < graph->dim - 1 && graph->grid[i + graph->dim]) {
     neighbors.push_back({current.row + 1, current.col});
   }
   printf("elem below\n");
   // element to the left 
-  printf("%d ", graph.grid[i - 1]);
-  if (current.col != 0 && graph.grid[i - 1]) {
+  printf("BEFORE\n");
+  printf("%d\n", graph->grid[i - 1]);
+  printf("AFTER\n");
+  if (current.col != 0 && graph->grid[i - 1]) {
     neighbors.push_back({current.row, current.col - 1});
   }
   printf("elem left\n");
   // element to the right
-  if (current.col < graph.dim - 1 && graph.grid[i + 1]) {
+  if (current.col < graph->dim - 1 && graph->grid[i + 1]) {
     neighbors.push_back({current.row, current.col + 1});
   }
   printf("elem right\n");
@@ -60,7 +63,7 @@ std::vector<node_t> reconstructPath(std::unordered_map<node_t, node_t, node_hash
   return path;
 }
 
-std::vector<node_t> aStar(node_t source, node_t target, graph_t graph) {
+std::vector<node_t> aStar(node_t source, node_t target, graph_t *graph) {
   std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo> pq;
   std::unordered_set<node_t, node_hash_t> openSet;
   std::unordered_map<node_t, node_t, node_hash_t> cameFrom;
@@ -76,6 +79,7 @@ std::vector<node_t> aStar(node_t source, node_t target, graph_t graph) {
   // fScore represents the total cost f(n) = g(n) + h(n) for any node
   fScore.insert({source, h(source, target)});
 
+  std::vector<node_t> neighbors;
   while (!pq.empty()) {
     node_t current = pq.top().node;
     // find solution
@@ -87,25 +91,25 @@ std::vector<node_t> aStar(node_t source, node_t target, graph_t graph) {
     pq.pop();
     openSet.erase(current);
     printf("current: %d %d\n", current.row, current.col);
-    std::vector<node_t> neighbors;
     neighbors = getNeighbors(current, graph, neighbors);
     for (node_t neighbor: neighbors) { 
       int neighborScore = gScore.find(neighbor) != gScore.end() ? gScore.at(neighbor) : INT_MAX;
       // every edge has weight 1
       int currentScore = gScore.at(current) + 1;
       if (currentScore < neighborScore) {
-        cameFrom.insert({neighbor, current});
-        gScore.insert({neighbor, currentScore});
+        cameFrom.emplace(neighbor, current);
+        gScore.emplace(neighbor, currentScore);
         int neighborfScore = currentScore + h(neighbor, target);
-        fScore.insert({neighbor, neighborfScore});
+        fScore.emplace(neighbor, neighborfScore);
         if (openSet.find(neighbor) == openSet.end()) {
-          openSet.insert(neighbor);
+          openSet.emplace(neighbor);
           pq.push({neighborfScore, neighbor});
         }
       }
     }
+    neighbors.clear();
     printf("size after loop: %d\n", neighbors.size());
-  assert(pq.size() == openSet.size());
+    assert(pq.size() == openSet.size());
   }
 
   return path;
@@ -142,13 +146,13 @@ int main(int argc, char *argv[]) {
   x2 = std::stoi(argv[5]);
   y2 = std::stoi(argv[6]);
 
-  graph_t graph = readGraph(x1, y1, x2, y2, inputFilename);
+  graph_t *graph = readGraph(x1, y1, x2, y2, inputFilename);
   node_t source = {x1, y1};
   node_t target = {x2, y2};
 
   std::vector<node_t> ret = aStar(source, target, graph);
 
-  writeOutput(inputFilename, graph, ret);
+  writeOutput(inputFilename, ret);
 }
 
 // TODO: testing infrastructure, larger and more varied outputs 

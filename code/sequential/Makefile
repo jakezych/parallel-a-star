@@ -2,7 +2,7 @@ APP_NAME=sequential
 OBJS += sequential.o
 
 CXX = mpic++ -std=c++11
-CXXFLAGS = -I. -O3 #-Wall -Wextra
+CXXFLAGS = -I. -O0 -g #-Wall -Wextra
 
 default: $(APP_NAME)
 
