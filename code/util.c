@@ -1,5 +1,9 @@
 #include "../graph.h"
 #include <fstream>
+#include <vector>
+#include <iostream>
+#include <sstream>
+#include <memory>
 
 
 /* DEBUG */
@@ -17,7 +21,7 @@ void printGraph(graph_t graph) {
   Reads the graph from the input file with the inputted name. The first line of
   the file represents the dimenensions of the grid (i.e. 5 => 5x5).
 */
-graph_t readGraph(int x1, int y1, int x2, int y2, char *inputFilename) {
+std::shared_ptr<graph_t> readGraph(int x1, int y1, int x2, int y2, char *inputFilename) {
   int dim; 
 
 	FILE *input = fopen(inputFilename, "r");
@@ -41,7 +45,7 @@ graph_t readGraph(int x1, int y1, int x2, int y2, char *inputFilename) {
   int *grid = (int *)malloc(dim*dim*sizeof(int));
 
   // account for spaces by multiplying by 2
-  int lineSize = 2*dim + 1;
+  int lineSize = 2*dim+1;
   char* line = (char *)malloc(lineSize);
   int lineCount = 0;
   int nodeCount = 0;
@@ -53,14 +57,15 @@ graph_t readGraph(int x1, int y1, int x2, int y2, char *inputFilename) {
     for (int i = 0; i < lineSize - 2; i++) {
       if (!isspace(line[i])) {
         // convert char to int
-        grid[dim*lineCount + nodeCount] = line[i] - '0';
+        grid[dim*lineCount + nodeCount] = (int)(line[i] - '0');
         nodeCount++;
       }
     }
     lineCount++;
   }
   fclose(input);
-  return {dim, grid};
+  free(line);
+  return std::shared_ptr<graph_t>(new graph_t(dim, grid));
 }
 
 
@@ -70,7 +75,7 @@ graph_t readGraph(int x1, int y1, int x2, int y2, char *inputFilename) {
  * n                        where n is the length of the path 
  * (r1, c1) (r2, c2) ... (rn, cn) the path outputted by the algorithm
  */
-void writeOutput(char *inputFilename, graph_t graph, std::vector<node_t> ret) {
+void writeOutput(char *inputFilename, std::vector<node_t> ret) {
   std::string full_filename = std::string(inputFilename);
   std::string base_filename = full_filename.substr(full_filename.find_last_of("/\\") + 1);
   std::string::size_type const p(base_filename.find_last_of('.'));

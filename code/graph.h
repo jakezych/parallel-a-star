@@ -1,29 +1,26 @@
 #ifndef _GRAPH_H
 #define _GRAPH_H
 
-#include <boost/functional/hash.hpp>
+#include <cstddef>
+#include <functional>
 
 struct node_t {
   int row; // row where the node is located
   int col; // col where the node is located
 
-  bool operator==(const node_t &other) const
-  { return (row == other.row
-            && col == other.col);
+  node_t() : row(0), col(0) {};
+  node_t(const int r, const int c) : row(r), col(c) {};
+
+  bool operator==(const node_t &other) const {
+    return row == other.row && col == other.col;
   }
 };
 
 struct node_hash_t {
-  std::size_t operator()(const node_t& n) const
+public:
+  std::size_t operator()(const node_t n) const
   {
-    // Start with a hash value of 0
-    std::size_t seed = 0;
-
-    // Modify 'seed' by XORing and bit-shifting
-    boost::hash_combine(seed,boost::hash_value(n.row));
-    boost::hash_combine(seed,boost::hash_value(n.col));
-
-    return seed;
+    return std::hash<int>()(n.row) ^ std::hash<int>()(n.col);
   }
 };
 
@@ -39,7 +36,7 @@ struct CompareNodeInfo {
     }
 };
 
-typedef struct {
+struct graph_t {
   int dim;     // dimension of the grid where grids are assumed to be square in shape
   int *grid;   /* 
                   1 at position [i][j] indicates there is a node there, 0 
@@ -49,6 +46,7 @@ typedef struct {
                   as a 1 dimensional array where [i][j] corresponds to index
                   [i*dim + j] 
                 */
-} graph_t;
+  graph_t(const int d, int *g) : dim(d), grid(g) {};
+};
 
 #endif 
