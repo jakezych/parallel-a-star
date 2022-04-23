@@ -7,6 +7,7 @@
 #include <climits>
 #include <unordered_set>
 #include <assert.h>
+#include <chrono>
 
 // heuristic function 
 int h(node_t source, node_t target) {
@@ -104,6 +105,13 @@ std::vector<node_t> aStar(node_t source, node_t target, std::shared_ptr<graph_t>
 }
 
 int main(int argc, char *argv[]) {
+  using namespace std::chrono;
+  typedef std::chrono::high_resolution_clock Clock;
+  typedef std::chrono::duration<double> dsec;
+
+  auto init_start = Clock::now();
+  double init_time = 0;
+
   int opt = 0;
   char *inputFilename = NULL;
   int x1 = -1;
@@ -138,7 +146,16 @@ int main(int argc, char *argv[]) {
   node_t source = {x1, y1};
   node_t target = {x2, y2};
 
+  init_time += duration_cast<dsec>(Clock::now() - init_start).count();
+  printf("Initialization Time: %lf.\n", init_time);
+
+  auto compute_start = Clock::now();
+  double compute_time = 0;
+  
   std::vector<node_t> ret = aStar(source, target, graph);
+
+  compute_time += duration_cast<dsec>(Clock::now() - compute_start).count();
+  printf("Computation Time: %lf.\n", compute_time);
 
   free(graph->grid);
   writeOutput(inputFilename, ret);
