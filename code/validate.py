@@ -43,11 +43,14 @@ def readSolution(args):
     for node in lines[1].split(' '):
       if len(node) == 0:
         break
-      if not node[1].isnumeric() or not node[-2].isnumeric():
+      first, second = node.split(',')
+      first = first[1:]
+      second = second[:-1]
+      if not first.isnumeric() or not second.isnumeric():
         LOG.error('''output file node contains non-numeric character''')
         return False, 0, []
-      r = int(node[1])
-      c = int(node[-2])
+      r = int(first)
+      c = int(second)
       path.append((r, c))
     
     return True, size, path
@@ -59,12 +62,12 @@ def readGrid(args):
   if len(lines) == 0:
     LOG.error('''output file does not contain a dimension''')
     return False, []
-  dim = lines[0]
+  dim = lines[0][:-1]
   # account of \n of dim
-  if len(dim) != 2 or not dim[0].isnumeric():
+  if len(dim) < 1 or not dim.isnumeric():
     LOG.error('''output file does not contain a properly formatted dimension''')
     return False, []
-  dim = int(dim[0])
+  dim = int(dim)
   if len(lines) < dim + 1:
       LOG.error('''output file does not contain enough lines''')
       return False, []

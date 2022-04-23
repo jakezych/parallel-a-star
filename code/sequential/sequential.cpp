@@ -143,5 +143,3 @@ int main(int argc, char *argv[]) {
   free(graph->grid);
   writeOutput(inputFilename, ret);
 }
-
-// TODO: testing infrastructure, larger and more varied outputs 
