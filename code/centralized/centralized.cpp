@@ -9,6 +9,30 @@
 #include <assert.h>
 #include <chrono>
 #include <pthread.h>
+#include <mutex>
+
+// Threading support
+typedef struct {
+  node_t source;
+  node_t target;
+  std::shared_ptr<graph_t> graph;
+  std::shared_ptr<std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>> pq;
+  std::shared_ptr<std::unordered_set<node_t, node_hash_t>> openSet;
+  std::shared_ptr<std::unordered_map<node_t, node_t, node_hash_t>> cameFrom;
+  std::shared_ptr<std::unordered_map<node_t, int, node_hash_t>> gScore;
+  std::shared_ptr<std::unordered_map<node_t, int, node_hash_t>> fScore;
+  std::shared_ptr<std::vector<node_t>> path;
+  std::shared_ptr<int> pathCost;
+  std::shared_ptr<int> termCount;
+  std::shared_ptr<std::mutex> muxPq;
+  std::shared_ptr<std::mutex> muxOpenSet;
+  std::shared_ptr<std::mutex> muxCameFrom;
+  std::shared_ptr<std::mutex> muxGScore;
+  std::shared_ptr<std::mutex> muxFScore;
+  std::shared_ptr<std::mutex> muxTermCount;
+  int threadId;
+  int numThreads;
+} WorkerArgs;
 
 // heuristic function 
 int h(node_t source, node_t target) {
@@ -55,54 +79,79 @@ std::vector<node_t> reconstructPath(std::unordered_map<node_t, node_t, node_hash
   return path;
 }
 
-std::vector<node_t> aStar(node_t source, node_t target, std::shared_ptr<graph_t> graph) {
-  std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo> pq;
-  std::unordered_set<node_t, node_hash_t> openSet;
-  std::unordered_map<node_t, node_t, node_hash_t> cameFrom;
-  std::unordered_map<node_t, int, node_hash_t> gScore;
-  std::unordered_map<node_t, int, node_hash_t> fScore;
-  std::vector<node_t> path;
-  // initialize open set 
-  pq.push({h(source, target), source});
-  openSet.insert(source);
+void* aStar(void *threadArgs) {
+  WorkerArgs* args = static_cast<WorkerArgs*>(threadArgs);  
 
-  // gScore represents the cost of the cheapest path from start to current node
-  gScore.insert({source, 0});
-  // fScore represents the total cost f(n) = g(n) + h(n) for any node
-  fScore.insert({source, h(source, target)});
+  auto graph = args->graph;
+  auto pq = args->pq;
+  auto openSet = args->openSet;
+  auto cameFrom = args->cameFrom;
+  auto gScore = args->gScore;
+  auto fScore = args->fScore;
+  auto path = args->path;
+  auto pathCost = args->pathCost;
+  auto termCount = args->termCount;
 
   std::vector<node_t> neighbors;
-  while (!pq.empty()) {
-    node_t current = pq.top().node;
+  bool waiting = false;
+  while (true) {
+    args->muxTermCount->lock();
+    if (*termCount < args->numThreads) {
+      args->muxTermCount->unlock();
+      break;
+    }
+    args->muxTermCount->unlock();
+
+    args->muxPq->lock();
+    if (pq->empty() || pq->top().cost >= *pathCost) {
+      args->muxPq->unlock();
+      waiting = true;
+      args->muxTermCount->lock();
+      (*termCount)++;
+      args->muxTermCount->unlock();
+      continue;
+    } else if (waiting) {
+      waiting = false;
+      args->muxTermCount->lock();
+      (*termCount)--;
+      args->muxTermCount->unlock();
+    }
+    
     // find solution
-    if (current == target) {
-      path = reconstructPath(cameFrom, current);
+    node_info_t current = pq->top();
+    pq->pop();
+    args->muxPq->unlock();
+
+    if (current.node == args->target && current.cost < *pathCost) {
+      args->muxCameFrom->lock();
+      *path = reconstructPath(*cameFrom, current);
+      *pathCost = current.cost;
+      args->muxCameFrom->unlock();
       break;
     }
 
-    pq.pop();
-    openSet.erase(current);
+    openSet->erase(current);
     neighbors = getNeighbors(current, graph, neighbors);
     for (node_t neighbor: neighbors) { 
-      int neighborScore = gScore.find(neighbor) != gScore.end() ? gScore.at(neighbor) : INT_MAX;
+      int neighborScore = gScore->find(neighbor) != gScore->end() ? gScore->at(neighbor) : INT_MAX;
       // every edge has weight 1
-      int currentScore = gScore.at(current) + 1;
+      int currentScore = gScore->at(current) + 1;
       if (currentScore < neighborScore) {
-        cameFrom.emplace(neighbor, current);
-        gScore.emplace(neighbor, currentScore);
-        int neighborfScore = currentScore + h(neighbor, target);
-        fScore.emplace(neighbor, neighborfScore);
-        if (openSet.find(neighbor) == openSet.end()) {
-          openSet.emplace(neighbor);
-          pq.push({neighborfScore, neighbor});
+        cameFrom->emplace(neighbor, current);
+        gScore->emplace(neighbor, currentScore);
+        int neighborfScore = currentScore + h(neighbor, args->target);
+        fScore->emplace(neighbor, neighborfScore);
+        if (openSet->find(neighbor) == openSet->end()) {
+          openSet->emplace(neighbor);
+          pq->push({neighborfScore, neighbor});
         }
       }
     }
     neighbors.clear();
-    assert(pq.size() == openSet.size());
+    assert(pq->size() == openSet->size());
   }
 
-  return path;
+  return NULL;
 }
 
 int main(int argc, char *argv[]) {
@@ -149,8 +198,6 @@ int main(int argc, char *argv[]) {
 
   
   std::shared_ptr<graph_t> graph = readGraph(x1, y1, x2, y2, inputFilename);
-  node_t source = {x1, y1};
-  node_t target = {x2, y2};
   
   const static int MAX_THREADS = 32;
 
@@ -162,19 +209,78 @@ int main(int argc, char *argv[]) {
   pthread_t workers[MAX_THREADS];
   WorkerArgs args[MAX_THREADS];
 
+  std::shared_ptr<std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>> pq =  
+    std::make_shared<std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>>();
+  std::shared_ptr<std::unordered_set<node_t, node_hash_t>> openSet =
+    std::make_shared<std::unordered_set<node_t, node_hash_t>>();
+  std::shared_ptr<std::unordered_map<node_t, node_t, node_hash_t>> cameFrom =
+    std::make_shared<std::unordered_map<node_t, node_t, node_hash_t>>();
+  std::shared_ptr<std::unordered_map<node_t, int, node_hash_t>> gScore =
+    std::make_shared<std::unordered_map<node_t, int, node_hash_t>>();
+  std::shared_ptr<std::unordered_map<node_t, int, node_hash_t>> fScore =
+    std::make_shared<std::unordered_map<node_t, int, node_hash_t>>();
+  std::shared_ptr<std::vector<node_t>> path =
+    std::make_shared<std::vector<node_t>>();
+  std::shared_ptr<int> pathCost = std::make_shared<int>(INT_MAX);
+  std::shared_ptr<int> termCount = std::make_shared<int>(0);
+  std::shared_ptr<std::mutex> muxPq = std::make_shared<std::mutex>();
+  std::shared_ptr<std::mutex> muxOpenSet = std::make_shared<std::mutex>();
+  std::shared_ptr<std::mutex> muxCameFrom = std::make_shared<std::mutex>();
+  std::shared_ptr<std::mutex> muxGScore = std::make_shared<std::mutex>();
+  std::shared_ptr<std::mutex> muxFScore = std::make_shared<std::mutex>();
+  std::shared_ptr<std::mutex> muxTermCount = std::make_shared<std::mutex>();
+
+  for (int i = 0; i < numThreads; i++) {
+    args[i].threadId = i;
+    args[i].numThreads = numThreads;
+    args[i].source = {x1, y1};
+    args[i].target = {x2, y2};
+    args[i].graph = graph;
+    args[i].pq = pq;
+    args[i].openSet = openSet;
+    args[i].cameFrom = cameFrom;
+    args[i].gScore = gScore;
+    args[i].fScore = fScore;
+    args[i].path = path;
+    args[i].pathCost = pathCost;
+    args[i].termCount = termCount;
+    args[i].muxPq = muxPq;
+    args[i].muxOpenSet = muxOpenSet;
+    args[i].muxCameFrom = muxCameFrom;
+    args[i].muxGScore = muxGScore;
+    args[i].muxFScore = muxFScore;
+    args[i].muxTermCount = muxTermCount;
+  }
+
+  node_t source = {x1, y1};
+  node_t target = {x2, y2};
+  pq->push({h(source, {x2, y2}), source});
+  openSet->insert(source);
+
+  // gScore represents the cost of the cheapest path from start to current node
+  gScore->insert({source, 0});
+  // fScore represents the total cost f(n) = g(n) + h(n) for any node
+  fScore->insert({source, h(source, target)});
+
   init_time += duration_cast<dsec>(Clock::now() - init_start).count();
   printf("Initialization Time: %lf.\n", init_time);
 
   auto compute_start = Clock::now();
   double compute_time = 0;
   
-  std::vector<node_t> ret = aStar(source, target, graph);
+  for (int i = 1; i < numThreads; i++)
+    pthread_create(&workers[i], NULL, aStar, &args[i]);
+
+  aStar(&args[0]);
 
   compute_time += duration_cast<dsec>(Clock::now() - compute_start).count();
   printf("Computation Time: %lf.\n", compute_time);
 
+  for (int i = 1; i < numThreads; i++)
+    pthread_join(workers[i], NULL);
+
   free(graph->grid);
-  writeOutput(inputFilename, ret);
+  writeOutput(inputFilename, *path);
 }
 
 // take in arg for threads
