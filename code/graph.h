@@ -25,8 +25,8 @@ public:
 };
 
 typedef struct {
-  int cost;   // the current path score f(n) for the node 
   node_t node;   // the index corresponding to the node
+  int cost;   // the current path score f(n) for the node 
 } node_info_t;
 
 struct CompareNodeInfo {

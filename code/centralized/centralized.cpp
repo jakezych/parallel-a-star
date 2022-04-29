@@ -83,7 +83,7 @@ std::vector<node_t> getNeighbors(node_t current, std::shared_ptr<graph_t> graph,
  * uses the cameFrom map to reconstruct the path from the current (target) node
  * and returns it as a vector in reverse order of the path.
 */
-std::vector<node_t> reconstructPath(std::unordered_map<node_t, node_t, node_hash_t> cameFrom, node_t current) {
+std::vector<node_t> reconstructPath(node_t current) {
   std::vector<node_t> path;
   path.emplace_back(current);
   while (cameFrom.find(current) != cameFrom.end()) {
@@ -134,7 +134,7 @@ void* aStar(void *threadArgs) {
     // solution found
     muxCameFrom.lock();
     if (current.node == args->target && current.cost < pathCost) {
-      path = reconstructPath(cameFrom, current.node);
+      path = reconstructPath(current.node);
       pathCost = current.cost;
       muxCameFrom.unlock();
       continue;
@@ -144,22 +144,18 @@ void* aStar(void *threadArgs) {
     neighbors = getNeighbors(current.node, graph, neighbors);
     for (node_t neighbor: neighbors) { 
       muxScore.lock();
-      int neighborScore = gScore.find(neighbor) != gScore.end() ? gScore.at(neighbor) : INT_MAX;
+      
+      int neighborScore = gScore.at(neighbor);
+      // TODO: try to init default values at the start 
+      // segfaults here! 
       // Error in `./centralized': double free or corruption (fasttop): 0x00000000013f90d0 *** sometimes
       // sometimes deadlock
-      int currentScore;
-      // scores are infinite by default 
-      if (gScore.find(current.node) != gScore.end()) {
-        // every edge has weight 1
-        currentScore = gScore.at(current.node) + 1;
-      } else {
-        currentScore = INT_MAX;
-      }
+      int currentScore = gScore.at(current.node) + 1;
   
       if (currentScore < neighborScore) {
         gScore.emplace(neighbor, currentScore);
-        int neighborfScore = currentScore + h(neighbor, args->target);
         muxScore.unlock();
+        int neighborfScore = currentScore + h(neighbor, args->target);
 
         muxCameFrom.lock();
         cameFrom.emplace(neighbor, current.node);
@@ -248,7 +244,14 @@ int main(int argc, char *argv[]) {
 
   // gScore represents the cost of the cheapest path from start to current node
   gScore.insert({source, 0});
-
+  
+  for (int i = 0; i < graph->dim; i++) {
+    for (int j = 0; j < graph->dim; j++) {
+      if (i != source.row && j != source.col) {
+        gScore.insert({{i, j}, INT_MAX});
+      }
+    }
+  }
 
   init_time += duration_cast<dsec>(Clock::now() - init_start).count();
   printf("Initialization Time: %lf.\n", init_time);
@@ -261,12 +264,12 @@ int main(int argc, char *argv[]) {
 
   aStar(&args[0]);
 
-  compute_time += duration_cast<dsec>(Clock::now() - compute_start).count();
-  printf("Computation Time: %lf.\n", compute_time);
-
   for (int i = 1; i < numThreads; i++)
     pthread_join(workers[i], NULL);
   
+  compute_time += duration_cast<dsec>(Clock::now() - compute_start).count();
+  printf("Computation Time: %lf.\n", compute_time);
+
   free(graph->grid);
   writeOutput(inputFilename, path);
 }
