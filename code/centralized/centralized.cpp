@@ -98,34 +98,36 @@ void* aStar(void *threadArgs) {
     muxTermCount.lock();
     // check whether all threads have terminated 
     if (termCount == args->numThreads) {
-      printf("term count: %d\n", termCount);
       muxTermCount.unlock();
       break;
     }
     muxTermCount.unlock();
-
     muxPq.lock();
-    if (pq->empty() || pq->top().cost >= *pathCost) {
+    if ((pq->empty() || pq->top().cost >= *pathCost)) {
       muxPq.unlock();
-      waiting = true;
-      muxTermCount.lock();
-      termCount++;
-      muxTermCount.unlock();
+      if (!waiting) {
+        waiting = true;
+        muxTermCount.lock();
+        termCount++;
+        muxTermCount.unlock();
+      }
       continue;
-    } else if (waiting) {
+    } 
+    muxPq.unlock();
+    if (waiting) {
       waiting = false;
       muxTermCount.lock();
       termCount--;
       muxTermCount.unlock();
     }
-    
-    // find solution
+
+    muxPq.lock();
     node_info_t current = pq->top();
-    printf("(%d, %d)\n", current.node.row, current.node.col);
     pq->pop();
     openSet->erase(current.node);
     muxPq.unlock();
 
+    // solution found
     if (current.node == args->target && current.cost < *pathCost) {
       muxCameFrom.lock();
       *path = reconstructPath(*cameFrom, current.node);
@@ -206,7 +208,6 @@ int main(int argc, char *argv[]) {
   y1 = std::stoi(argv[6]);
   x2 = std::stoi(argv[7]);
   y2 = std::stoi(argv[8]);
-
   std::shared_ptr<graph_t> graph = readGraph(x1, y1, x2, y2, inputFilename);
   
   const static int MAX_THREADS = 32;
