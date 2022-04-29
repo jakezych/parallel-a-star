@@ -24,6 +24,7 @@ std::mutex muxPq;
 std::mutex muxCameFrom;
 std::mutex muxScore;
 std::mutex muxTermCount;
+std::mutex muxPath;
 
 std::shared_ptr<graph_t> graph;
 
@@ -94,8 +95,11 @@ std::vector<int> getNeighbors(int current, std::vector<int> neighbors) {
 std::vector<int> reconstructPath(int current) {
   std::vector<int> path;
   path.emplace_back(current);
+  // infinite loop here!!! 
   while (cameFrom.find(current) != cameFrom.end()) {
+    printf("current: %d\n", current);
     current = cameFrom.at(current);
+    printf("came from: %d\n", current);
     path.emplace_back(current);
   }
   return path;
@@ -110,19 +114,21 @@ void* aStar(void *threadArgs) {
     muxTermCount.lock();
     // check whether all threads have terminated 
     if (termCount == args->numThreads) {
-      printf("%d terminated\n", args->threadId);
       muxTermCount.unlock();
       break;
     }
     muxTermCount.unlock();
+  
+    muxPath.lock();
+    int curPathCost = pathCost;
+    muxPath.unlock();
     // if a thread sees an empty queue, enters waiting state
     muxPq.lock();
-    if ((pq.empty() || pq.top().cost >= pathCost)) {
+    if ((pq.empty() || pq.top().cost >= curPathCost)) {
       muxPq.unlock();
       if (!waiting) {
         waiting = true;
         muxTermCount.lock();
-        printf("%d inc termCount\n", args->threadId);
         termCount++;
         muxTermCount.unlock();
       }
@@ -139,29 +145,26 @@ void* aStar(void *threadArgs) {
       waiting = false;
       muxTermCount.lock();
       termCount--;
-      printf("%d dec termCount\n", args->threadId);
       muxTermCount.unlock();
     }
     
     // solution found
-    muxCameFrom.lock();
-    if (current.node == args->target && current.cost < pathCost) {
+    muxPath.lock();
+    curPathCost = pathCost;
+    muxPath.unlock();
+
+    if (current.node == args->target && current.cost < curPathCost) {
+      muxCameFrom.lock();
       path = reconstructPath(current.node);
       pathCost = current.cost;
       muxCameFrom.unlock();
-      continue;
     }
-    muxCameFrom.unlock();
 
     neighbors = getNeighbors(current.node, neighbors);
     for (int neighbor: neighbors) { 
       muxScore.lock();
       
       int neighborScore = gScore.at(neighbor);
-      // TODO: try to init default values at the start 
-      // segfaults here! 
-      // Error in `./centralized': double free or corruption (fasttop): 0x00000000013f90d0 *** sometimes
-      // sometimes deadlock
       int currentScore = gScore.at(current.node) + 1;
   
       if (currentScore < neighborScore) {
@@ -169,8 +172,17 @@ void* aStar(void *threadArgs) {
         muxScore.unlock();
         int neighborfScore = currentScore + h(neighbor, args->target);
 
+        // deadlock here!!!
         muxCameFrom.lock();
-        cameFrom.emplace(neighbor, current.node);
+        // if the neighbor is your parent, you cannot be its parent??
+        if (cameFrom.find(current.node) != cameFrom.end()) {
+          printf("parent: %d child: %d\n", current.node, neighbor);
+          if (cameFrom.at(current.node) != neighbor) {
+            cameFrom.emplace(neighbor, current.node);
+          }
+        } else {
+          cameFrom.emplace(neighbor, current.node);
+        }
         muxCameFrom.unlock();
         
         muxPq.lock();
