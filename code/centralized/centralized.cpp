@@ -98,6 +98,7 @@ void* aStar(void *threadArgs) {
     muxTermCount.lock();
     // check whether all threads have terminated 
     if (termCount == args->numThreads) {
+      printf("term count: %d\n", termCount);
       muxTermCount.unlock();
       break;
     }
@@ -120,7 +121,7 @@ void* aStar(void *threadArgs) {
     
     // find solution
     node_info_t current = pq->top();
-    // printf("(%d, %d)\n", current.node.row, current.node.col);
+    printf("(%d, %d)\n", current.node.row, current.node.col);
     pq->pop();
     openSet->erase(current.node);
     muxPq.unlock();
@@ -201,10 +202,10 @@ int main(int argc, char *argv[]) {
       printf("Usage: %s -f <filename> -n <num_threads> <x1> <y1> <x2> <y2>\n", argv[0]);
       return -1;
   }
-  x1 = std::stoi(argv[4]);
-  y1 = std::stoi(argv[5]);
-  x2 = std::stoi(argv[6]);
-  y2 = std::stoi(argv[7]);
+  x1 = std::stoi(argv[5]);
+  y1 = std::stoi(argv[6]);
+  x2 = std::stoi(argv[7]);
+  y2 = std::stoi(argv[8]);
 
   std::shared_ptr<graph_t> graph = readGraph(x1, y1, x2, y2, inputFilename);
   
@@ -273,7 +274,8 @@ int main(int argc, char *argv[]) {
 
   for (int i = 1; i < numThreads; i++)
     pthread_join(workers[i], NULL);
-
+  printf("pthread join done\n");
   free(graph->grid);
   writeOutput(inputFilename, *path);
+  printf("write output done");
 }
