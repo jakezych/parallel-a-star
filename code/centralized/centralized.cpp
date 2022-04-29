@@ -10,6 +10,7 @@
 #include <chrono>
 #include <pthread.h>
 #include <mutex>
+#include <cmath>
 
 // Threading support
 typedef struct {
@@ -25,10 +26,8 @@ typedef struct {
   std::shared_ptr<int> pathCost;
   std::shared_ptr<int> termCount;
   std::shared_ptr<std::mutex> muxPq;
-  std::shared_ptr<std::mutex> muxOpenSet;
   std::shared_ptr<std::mutex> muxCameFrom;
-  std::shared_ptr<std::mutex> muxGScore;
-  std::shared_ptr<std::mutex> muxFScore;
+  std::shared_ptr<std::mutex> muxScore;
   std::shared_ptr<std::mutex> muxTermCount;
   int threadId;
   int numThreads;
@@ -36,8 +35,8 @@ typedef struct {
 
 // heuristic function 
 int h(node_t source, node_t target) {
-  // manhatten distance
-  return std::abs(source.row - target.row) + std::abs(source.col - target.col);
+  // euclidian distance
+  return sqrt(std::abs(source.row - target.row)*std::abs(source.row - target.row) + std::abs(source.col - target.col)*std::abs(source.col - target.col));
 }
 
 /* 
@@ -91,64 +90,77 @@ void* aStar(void *threadArgs) {
   auto path = args->path;
   auto pathCost = args->pathCost;
   auto termCount = args->termCount;
+  auto muxTermCount = args->muxTermCount;
+  auto muxPq = args->muxPq;
+  auto muxCameFrom = args->muxCameFrom;
+  auto muxScore = args->muxScore;
 
   std::vector<node_t> neighbors;
   bool waiting = false;
   while (true) {
-    args->muxTermCount->lock();
-    if (*termCount < args->numThreads) {
-      args->muxTermCount->unlock();
+    muxTermCount->lock();
+    // check whether all threads have terminated 
+    if (*termCount == args->numThreads) {
+      muxTermCount->unlock();
       break;
     }
-    args->muxTermCount->unlock();
+    muxTermCount->unlock();
 
-    args->muxPq->lock();
+    muxPq->lock();
     if (pq->empty() || pq->top().cost >= *pathCost) {
-      args->muxPq->unlock();
+      muxPq->unlock();
       waiting = true;
-      args->muxTermCount->lock();
+      muxTermCount->lock();
       (*termCount)++;
-      args->muxTermCount->unlock();
+      muxTermCount->unlock();
       continue;
     } else if (waiting) {
       waiting = false;
-      args->muxTermCount->lock();
+      muxTermCount->lock();
       (*termCount)--;
-      args->muxTermCount->unlock();
+      muxTermCount->unlock();
     }
     
     // find solution
     node_info_t current = pq->top();
     pq->pop();
-    args->muxPq->unlock();
+    openSet->erase(current.node);
+    muxPq->unlock();
 
     if (current.node == args->target && current.cost < *pathCost) {
-      args->muxCameFrom->lock();
-      *path = reconstructPath(*cameFrom, current);
+      muxCameFrom->lock();
+      *path = reconstructPath(*cameFrom, current.node);
       *pathCost = current.cost;
-      args->muxCameFrom->unlock();
-      break;
+      muxCameFrom->unlock();
+      continue;
     }
 
-    openSet->erase(current);
-    neighbors = getNeighbors(current, graph, neighbors);
+    neighbors = getNeighbors(current.node, graph, neighbors);
     for (node_t neighbor: neighbors) { 
+      muxScore->lock();
       int neighborScore = gScore->find(neighbor) != gScore->end() ? gScore->at(neighbor) : INT_MAX;
       // every edge has weight 1
-      int currentScore = gScore->at(current) + 1;
+      int currentScore = gScore->at(current.node) + 1;
       if (currentScore < neighborScore) {
-        cameFrom->emplace(neighbor, current);
         gScore->emplace(neighbor, currentScore);
         int neighborfScore = currentScore + h(neighbor, args->target);
         fScore->emplace(neighbor, neighborfScore);
+        muxScore->unlock();
+
+        muxCameFrom->lock();
+        cameFrom->emplace(neighbor, current.node);
+        muxCameFrom->unlock();
+        
+        muxPq->lock();
         if (openSet->find(neighbor) == openSet->end()) {
           openSet->emplace(neighbor);
           pq->push({neighborfScore, neighbor});
         }
+        muxPq->unlock();
       }
+      muxScore->unlock();
     }
     neighbors.clear();
-    assert(pq->size() == openSet->size());
   }
 
   return NULL;
@@ -188,15 +200,14 @@ int main(int argc, char *argv[]) {
   } while (opt != -1);
 
   if (inputFilename == NULL || argc < 8) {
-      printf("Usage: %s -f <filename> -n <x1> <y1> <x2> <y2>\n", argv[0]);
+      printf("Usage: %s -f <filename> -n <num_threads> <x1> <y1> <x2> <y2>\n", argv[0]);
       return -1;
   }
-  x1 = std::stoi(argv[3]);
-  y1 = std::stoi(argv[4]);
-  x2 = std::stoi(argv[5]);
-  y2 = std::stoi(argv[6]);
+  x1 = std::stoi(argv[4]);
+  y1 = std::stoi(argv[5]);
+  x2 = std::stoi(argv[6]);
+  y2 = std::stoi(argv[7]);
 
-  
   std::shared_ptr<graph_t> graph = readGraph(x1, y1, x2, y2, inputFilename);
   
   const static int MAX_THREADS = 32;
@@ -224,10 +235,8 @@ int main(int argc, char *argv[]) {
   std::shared_ptr<int> pathCost = std::make_shared<int>(INT_MAX);
   std::shared_ptr<int> termCount = std::make_shared<int>(0);
   std::shared_ptr<std::mutex> muxPq = std::make_shared<std::mutex>();
-  std::shared_ptr<std::mutex> muxOpenSet = std::make_shared<std::mutex>();
   std::shared_ptr<std::mutex> muxCameFrom = std::make_shared<std::mutex>();
-  std::shared_ptr<std::mutex> muxGScore = std::make_shared<std::mutex>();
-  std::shared_ptr<std::mutex> muxFScore = std::make_shared<std::mutex>();
+  std::shared_ptr<std::mutex> muxScore = std::make_shared<std::mutex>();
   std::shared_ptr<std::mutex> muxTermCount = std::make_shared<std::mutex>();
 
   for (int i = 0; i < numThreads; i++) {
@@ -245,10 +254,8 @@ int main(int argc, char *argv[]) {
     args[i].pathCost = pathCost;
     args[i].termCount = termCount;
     args[i].muxPq = muxPq;
-    args[i].muxOpenSet = muxOpenSet;
     args[i].muxCameFrom = muxCameFrom;
-    args[i].muxGScore = muxGScore;
-    args[i].muxFScore = muxFScore;
+    args[i].muxScore = muxScore;
     args[i].muxTermCount = muxTermCount;
   }
 

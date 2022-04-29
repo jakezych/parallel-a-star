@@ -8,11 +8,12 @@
 #include <unordered_set>
 #include <assert.h>
 #include <chrono>
+#include <cmath>
 
 // heuristic function 
 int h(node_t source, node_t target) {
-  // manhatten distance
-  return std::abs(source.row - target.row) + std::abs(source.col - target.col);
+  // euclidian distance
+  return sqrt(std::abs(source.row - target.row)*std::abs(source.row - target.row) + std::abs(source.col - target.col)*std::abs(source.col - target.col));
 }
 
 /* 
