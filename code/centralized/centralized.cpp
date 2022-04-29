@@ -106,6 +106,7 @@ void* aStar(void *threadArgs) {
       break;
     }
     muxTermCount.unlock();
+    // if a thread sees an empty queue, enters waiting state
     muxPq.lock();
     if ((pq.empty() || pq.top().cost >= pathCost)) {
       muxPq.unlock();
@@ -117,6 +118,7 @@ void* aStar(void *threadArgs) {
       }
       continue;
     } 
+    // if waiting and pq is no longer empty
     if (waiting) {
       waiting = false;
       muxTermCount.lock();
@@ -130,7 +132,6 @@ void* aStar(void *threadArgs) {
     muxPq.unlock();
 
     // solution found
-    // path cost race condition? 
     muxCameFrom.lock();
     if (current.node == args->target && current.cost < pathCost) {
       path = reconstructPath(cameFrom, current.node);
@@ -144,14 +145,17 @@ void* aStar(void *threadArgs) {
     for (node_t neighbor: neighbors) { 
       muxScore.lock();
       int neighborScore = gScore.find(neighbor) != gScore.end() ? gScore.at(neighbor) : INT_MAX;
-      // every edge has weight 1
-      // TODO: crashes here sometimes
-      if (gScore.find(current.node) == gScore.end()) {
-        printf("current node not found\n");
-        int currentScore = gScore.at(current.node) + 1;
-        printf("current score: %d\n", currentScore);
+      // Error in `./centralized': double free or corruption (fasttop): 0x00000000013f90d0 *** sometimes
+      // sometimes deadlock
+      int currentScore;
+      // scores are infinite by default 
+      if (gScore.find(current.node) != gScore.end()) {
+        // every edge has weight 1
+        currentScore = gScore.at(current.node) + 1;
+      } else {
+        currentScore = INT_MAX;
       }
-      int currentScore = gScore.at(current.node) + 1;
+  
       if (currentScore < neighborScore) {
         gScore.emplace(neighbor, currentScore);
         int neighborfScore = currentScore + h(neighbor, args->target);
