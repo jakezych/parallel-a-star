@@ -14,8 +14,8 @@
 
 // Threading support
 typedef struct {
-  node_t source;
-  node_t target;
+  int source;
+  int target;
   int threadId;
   int numThreads;
 } WorkerArgs;
@@ -43,38 +43,46 @@ std::shared_ptr<std::vector<node_t>> path =
 std::make_shared<std::vector<node_t>>();
 */
 std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo> pq;
-std::unordered_set<node_t, node_hash_t> openSet;
-std::unordered_map<node_t, node_t, node_hash_t> cameFrom;
-std::unordered_map<node_t, int, node_hash_t> gScore;
-std::vector<node_t> path;
+std::unordered_set<int> openSet;
+std::unordered_map<int, int> cameFrom;
+std::unordered_map<int, int> gScore;
+std::vector<int> path;
+
+// TODO: work with only ints and just convert back and forth!!!!
+
 
 // heuristic function 
-int h(node_t source, node_t target) {
+int h(int source, int target) {
+  int sourceR = source / graph->dim;
+  int sourceC = source % graph->dim;
+  int targetR = target / graph->dim;
+  int targetC = target % graph->dim;
   // euclidian distance
-  return sqrt(std::abs(source.row - target.row)*std::abs(source.row - target.row) + std::abs(source.col - target.col)*std::abs(source.col - target.col));
+  return sqrt(std::abs(sourceR - targetR)*std::abs(sourceR - targetR) + std::abs(sourceC - targetC)*std::abs(sourceC - targetC));
 }
 
 /* 
  * returns the neighbors of the current node as a vector. Checks whether or
  * not they exist (if they are within the grid and equal to 1)
  */
-std::vector<node_t> getNeighbors(node_t current, std::shared_ptr<graph_t> graph, std::vector<node_t> neighbors) {
-  int i = current.row*graph->dim + current.col;
+std::vector<int> getNeighbors(int current, std::vector<int> neighbors) {
+  int currentR = current / graph->dim;
+  int currentC = current % graph->dim;
   // element above
-  if (current.row != 0 && graph->grid[i - graph->dim]) {
-    neighbors.push_back({current.row - 1, current.col});
+  if (currentR != 0 && graph->grid[current - graph->dim]) {
+    neighbors.push_back(current - graph->dim);
   }
   // element below
-  if (current.row < graph->dim - 1 && graph->grid[i + graph->dim]) {
-    neighbors.push_back({current.row + 1, current.col});
+  if (currentR < graph->dim - 1 && graph->grid[current + graph->dim]) {
+    neighbors.push_back(current + graph->dim);
   }
   // element to the left 
-  if (current.col != 0 && graph->grid[i - 1]) {
-    neighbors.push_back({current.row, current.col - 1});
+  if (currentC != 0 && graph->grid[current - 1]) {
+    neighbors.push_back(current - 1);
   }
   // element to the right
-  if (current.col < graph->dim - 1 && graph->grid[i + 1]) {
-    neighbors.push_back({current.row, current.col + 1});
+  if (currentC < graph->dim - 1 && graph->grid[current + 1]) {
+    neighbors.push_back(current + 1);
   }
   return neighbors;
 }
@@ -83,8 +91,8 @@ std::vector<node_t> getNeighbors(node_t current, std::shared_ptr<graph_t> graph,
  * uses the cameFrom map to reconstruct the path from the current (target) node
  * and returns it as a vector in reverse order of the path.
 */
-std::vector<node_t> reconstructPath(node_t current) {
-  std::vector<node_t> path;
+std::vector<int> reconstructPath(int current) {
+  std::vector<int> path;
   path.emplace_back(current);
   while (cameFrom.find(current) != cameFrom.end()) {
     current = cameFrom.at(current);
@@ -96,12 +104,13 @@ std::vector<node_t> reconstructPath(node_t current) {
 void* aStar(void *threadArgs) {
   WorkerArgs* args = static_cast<WorkerArgs*>(threadArgs);  
 
-  std::vector<node_t> neighbors;
+  std::vector<int> neighbors;
   bool waiting = false;
   while (true) {
     muxTermCount.lock();
     // check whether all threads have terminated 
     if (termCount == args->numThreads) {
+      printf("%d terminated\n", args->threadId);
       muxTermCount.unlock();
       break;
     }
@@ -113,24 +122,27 @@ void* aStar(void *threadArgs) {
       if (!waiting) {
         waiting = true;
         muxTermCount.lock();
+        printf("%d inc termCount\n", args->threadId);
         termCount++;
         muxTermCount.unlock();
       }
       continue;
     } 
-    // if waiting and pq is no longer empty
-    if (waiting) {
-      waiting = false;
-      muxTermCount.lock();
-      termCount--;
-      muxTermCount.unlock();
-    }
 
     node_info_t current = pq.top();
     pq.pop();
     openSet.erase(current.node);
     muxPq.unlock();
 
+    // if waiting and pq is no longer empty
+    if (waiting) {
+      waiting = false;
+      muxTermCount.lock();
+      termCount--;
+      printf("%d dec termCount\n", args->threadId);
+      muxTermCount.unlock();
+    }
+    
     // solution found
     muxCameFrom.lock();
     if (current.node == args->target && current.cost < pathCost) {
@@ -141,8 +153,8 @@ void* aStar(void *threadArgs) {
     }
     muxCameFrom.unlock();
 
-    neighbors = getNeighbors(current.node, graph, neighbors);
-    for (node_t neighbor: neighbors) { 
+    neighbors = getNeighbors(current.node, neighbors);
+    for (int neighbor: neighbors) { 
       muxScore.lock();
       
       int neighborScore = gScore.at(neighbor);
@@ -229,8 +241,8 @@ int main(int argc, char *argv[]) {
   pthread_t workers[MAX_THREADS];
   WorkerArgs args[MAX_THREADS];
 
-  node_t source = {x1, y1};
-  node_t target = {x2, y2};
+  int source = x1*graph->dim + y1;
+  int target = x2*graph->dim + y2;
 
   for (int i = 0; i < numThreads; i++) {
     args[i].threadId = i;
@@ -239,16 +251,17 @@ int main(int argc, char *argv[]) {
     args[i].target = target;
   }
 
-  pq.push({h(source, {x2, y2}), source});
+  pq.push({source, h(source, target)});
   openSet.insert(source);
 
   // gScore represents the cost of the cheapest path from start to current node
   gScore.insert({source, 0});
   
+  // initialize all other nodes to have an inf g score 
   for (int i = 0; i < graph->dim; i++) {
     for (int j = 0; j < graph->dim; j++) {
-      if (i != source.row && j != source.col) {
-        gScore.insert({{i, j}, INT_MAX});
+      if (i != source / graph->dim || j != source % graph->dim) {
+        gScore.insert({i*graph->dim + j, INT_MAX});
       }
     }
   }
@@ -271,5 +284,5 @@ int main(int argc, char *argv[]) {
   printf("Computation Time: %lf.\n", compute_time);
 
   free(graph->grid);
-  writeOutput(inputFilename, path);
+  writeOutputCentralized(inputFilename, path, graph);
 }

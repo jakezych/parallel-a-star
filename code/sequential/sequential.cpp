@@ -1,4 +1,4 @@
-#include "../graph.h"
+#include "graph.h"
 #include "../util.c"
 #include <unistd.h>
 #include <ctype.h>
@@ -63,7 +63,7 @@ std::vector<node_t> aStar(node_t source, node_t target, std::shared_ptr<graph_t>
   std::unordered_map<node_t, int, node_hash_t> fScore;
   std::vector<node_t> path;
   // initialize open set 
-  pq.push({h(source, target), source});
+  pq.push({source, h(source, target)});
   openSet.insert(source);
 
   // gScore represents the cost of the cheapest path from start to current node
@@ -94,7 +94,7 @@ std::vector<node_t> aStar(node_t source, node_t target, std::shared_ptr<graph_t>
         fScore.emplace(neighbor, neighborfScore);
         if (openSet.find(neighbor) == openSet.end()) {
           openSet.emplace(neighbor);
-          pq.push({neighborfScore, neighbor});
+          pq.push({neighbor, neighborfScore});
         }
       }
     }
@@ -159,5 +159,5 @@ int main(int argc, char *argv[]) {
   printf("Computation Time: %lf.\n", compute_time);
 
   free(graph->grid);
-  writeOutput(inputFilename, ret);
+  writeOutputSequential(inputFilename, ret);
 }
