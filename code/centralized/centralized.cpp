@@ -24,14 +24,16 @@ typedef struct {
   std::shared_ptr<std::unordered_map<node_t, int, node_hash_t>> fScore;
   std::shared_ptr<std::vector<node_t>> path;
   std::shared_ptr<int> pathCost;
-  std::shared_ptr<int> termCount;
-  std::shared_ptr<std::mutex> muxPq;
-  std::shared_ptr<std::mutex> muxCameFrom;
-  std::shared_ptr<std::mutex> muxScore;
-  std::shared_ptr<std::mutex> muxTermCount;
   int threadId;
   int numThreads;
 } WorkerArgs;
+
+std::mutex muxPq;
+std::mutex muxCameFrom;
+std::mutex muxScore;
+std::mutex muxTermCount;
+
+int termCount = 0;
 
 // heuristic function 
 int h(node_t source, node_t target) {
@@ -89,55 +91,51 @@ void* aStar(void *threadArgs) {
   auto fScore = args->fScore;
   auto path = args->path;
   auto pathCost = args->pathCost;
-  auto termCount = args->termCount;
-  auto muxTermCount = args->muxTermCount;
-  auto muxPq = args->muxPq;
-  auto muxCameFrom = args->muxCameFrom;
-  auto muxScore = args->muxScore;
 
   std::vector<node_t> neighbors;
   bool waiting = false;
   while (true) {
-    muxTermCount->lock();
+    muxTermCount.lock();
     // check whether all threads have terminated 
-    if (*termCount == args->numThreads) {
-      muxTermCount->unlock();
+    if (termCount == args->numThreads) {
+      muxTermCount.unlock();
       break;
     }
-    muxTermCount->unlock();
+    muxTermCount.unlock();
 
-    muxPq->lock();
+    muxPq.lock();
     if (pq->empty() || pq->top().cost >= *pathCost) {
-      muxPq->unlock();
+      muxPq.unlock();
       waiting = true;
-      muxTermCount->lock();
-      (*termCount)++;
-      muxTermCount->unlock();
+      muxTermCount.lock();
+      termCount++;
+      muxTermCount.unlock();
       continue;
     } else if (waiting) {
       waiting = false;
-      muxTermCount->lock();
-      (*termCount)--;
-      muxTermCount->unlock();
+      muxTermCount.lock();
+      termCount--;
+      muxTermCount.unlock();
     }
     
     // find solution
     node_info_t current = pq->top();
+    // printf("(%d, %d)\n", current.node.row, current.node.col);
     pq->pop();
     openSet->erase(current.node);
-    muxPq->unlock();
+    muxPq.unlock();
 
     if (current.node == args->target && current.cost < *pathCost) {
-      muxCameFrom->lock();
+      muxCameFrom.lock();
       *path = reconstructPath(*cameFrom, current.node);
       *pathCost = current.cost;
-      muxCameFrom->unlock();
+      muxCameFrom.unlock();
       continue;
     }
 
     neighbors = getNeighbors(current.node, graph, neighbors);
     for (node_t neighbor: neighbors) { 
-      muxScore->lock();
+      muxScore.lock();
       int neighborScore = gScore->find(neighbor) != gScore->end() ? gScore->at(neighbor) : INT_MAX;
       // every edge has weight 1
       int currentScore = gScore->at(current.node) + 1;
@@ -145,20 +143,20 @@ void* aStar(void *threadArgs) {
         gScore->emplace(neighbor, currentScore);
         int neighborfScore = currentScore + h(neighbor, args->target);
         fScore->emplace(neighbor, neighborfScore);
-        muxScore->unlock();
+        muxScore.unlock();
 
-        muxCameFrom->lock();
+        muxCameFrom.lock();
         cameFrom->emplace(neighbor, current.node);
-        muxCameFrom->unlock();
+        muxCameFrom.unlock();
         
-        muxPq->lock();
+        muxPq.lock();
         if (openSet->find(neighbor) == openSet->end()) {
           openSet->emplace(neighbor);
           pq->push({neighborfScore, neighbor});
         }
-        muxPq->unlock();
+        muxPq.unlock();
       }
-      muxScore->unlock();
+      muxScore.unlock();
     }
     neighbors.clear();
   }
@@ -233,11 +231,6 @@ int main(int argc, char *argv[]) {
   std::shared_ptr<std::vector<node_t>> path =
     std::make_shared<std::vector<node_t>>();
   std::shared_ptr<int> pathCost = std::make_shared<int>(INT_MAX);
-  std::shared_ptr<int> termCount = std::make_shared<int>(0);
-  std::shared_ptr<std::mutex> muxPq = std::make_shared<std::mutex>();
-  std::shared_ptr<std::mutex> muxCameFrom = std::make_shared<std::mutex>();
-  std::shared_ptr<std::mutex> muxScore = std::make_shared<std::mutex>();
-  std::shared_ptr<std::mutex> muxTermCount = std::make_shared<std::mutex>();
 
   for (int i = 0; i < numThreads; i++) {
     args[i].threadId = i;
@@ -252,11 +245,6 @@ int main(int argc, char *argv[]) {
     args[i].fScore = fScore;
     args[i].path = path;
     args[i].pathCost = pathCost;
-    args[i].termCount = termCount;
-    args[i].muxPq = muxPq;
-    args[i].muxCameFrom = muxCameFrom;
-    args[i].muxScore = muxScore;
-    args[i].muxTermCount = muxTermCount;
   }
 
   node_t source = {x1, y1};
@@ -289,9 +277,3 @@ int main(int argc, char *argv[]) {
   free(graph->grid);
   writeOutput(inputFilename, *path);
 }
-
-// take in arg for threads
-// make thread args 
-// initialize threads, join after a*
-  // pull out the data structure from a* and save pointers in the args 
-//
