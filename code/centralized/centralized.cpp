@@ -1,4 +1,4 @@
-#include "graph.h"
+#include "../graph.h"
 #include "../util.c"
 #include <unistd.h>
 #include <ctype.h>
@@ -31,25 +31,11 @@ std::shared_ptr<graph_t> graph;
 int termCount = 0;
 int pathCost = INT_MAX;
 
-/*
-std::shared_ptr<std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>> pq =  
-std::make_shared<std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo>>();
-std::shared_ptr<std::unordered_set<node_t, node_hash_t>> openSet =
-std::make_shared<std::unordered_set<node_t, node_hash_t>>();
-std::shared_ptr<std::unordered_map<node_t, node_t, node_hash_t>> cameFrom =
-std::make_shared<std::unordered_map<node_t, node_t, node_hash_t>>();
-std::shared_ptr<std::unordered_map<node_t, int, node_hash_t>> gScore =
-std::make_shared<std::unordered_map<node_t, int, node_hash_t>>();
-std::shared_ptr<std::vector<node_t>> path =
-std::make_shared<std::vector<node_t>>();
-*/
 std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo> pq;
 std::unordered_set<int> openSet;
 std::unordered_map<int, int> cameFrom;
 std::unordered_map<int, int> gScore;
 std::vector<int> path;
-
-// TODO: work with only ints and just convert back and forth!!!!
 
 
 // heuristic function 
@@ -95,11 +81,8 @@ std::vector<int> getNeighbors(int current, std::vector<int> neighbors) {
 std::vector<int> reconstructPath(int current) {
   std::vector<int> path;
   path.emplace_back(current);
-  // infinite loop here!!! 
   while (cameFrom.find(current) != cameFrom.end()) {
-    printf("current: %d\n", current);
     current = cameFrom.at(current);
-    printf("came from: %d\n", current);
     path.emplace_back(current);
   }
   return path;
@@ -148,11 +131,11 @@ void* aStar(void *threadArgs) {
       muxTermCount.unlock();
     }
     
-    // solution found
     muxPath.lock();
     curPathCost = pathCost;
     muxPath.unlock();
 
+    // solution found
     if (current.node == args->target && current.cost < curPathCost) {
       muxCameFrom.lock();
       path = reconstructPath(current.node);
@@ -172,11 +155,9 @@ void* aStar(void *threadArgs) {
         muxScore.unlock();
         int neighborfScore = currentScore + h(neighbor, args->target);
 
-        // deadlock here!!!
         muxCameFrom.lock();
-        // if the neighbor is your parent, you cannot be its parent??
+        // if the neighbor is current parent, current cannot be parent 
         if (cameFrom.find(current.node) != cameFrom.end()) {
-          printf("parent: %d child: %d\n", current.node, neighbor);
           if (cameFrom.at(current.node) != neighbor) {
             cameFrom.emplace(neighbor, current.node);
           }

@@ -1,4 +1,4 @@
-#include "graph.h"
+#include "../graph.h"
 #include "../util.c"
 #include <unistd.h>
 #include <ctype.h>
@@ -10,33 +10,40 @@
 #include <chrono>
 #include <cmath>
 
+std::shared_ptr<graph_t> graph;
+
 // heuristic function 
-int h(node_t source, node_t target) {
+int h(int source, int target) {
+  int sourceR = source / graph->dim;
+  int sourceC = source % graph->dim;
+  int targetR = target / graph->dim;
+  int targetC = target % graph->dim;
   // euclidian distance
-  return sqrt(std::abs(source.row - target.row)*std::abs(source.row - target.row) + std::abs(source.col - target.col)*std::abs(source.col - target.col));
+  return sqrt(std::abs(sourceR - targetR)*std::abs(sourceR - targetR) + std::abs(sourceC - targetC)*std::abs(sourceC - targetC));
 }
 
 /* 
  * returns the neighbors of the current node as a vector. Checks whether or
  * not they exist (if they are within the grid and equal to 1)
  */
-std::vector<node_t> getNeighbors(node_t current, std::shared_ptr<graph_t> graph, std::vector<node_t> neighbors) {
-  int i = current.row*graph->dim + current.col;
+std::vector<int> getNeighbors(int current, std::shared_ptr<graph_t> graph, std::vector<int> neighbors) {
+  int currentR = current / graph->dim;
+  int currentC = current % graph->dim;
   // element above
-  if (current.row != 0 && graph->grid[i - graph->dim]) {
-    neighbors.push_back({current.row - 1, current.col});
+  if (currentR != 0 && graph->grid[current - graph->dim]) {
+    neighbors.push_back(current - graph->dim);
   }
   // element below
-  if (current.row < graph->dim - 1 && graph->grid[i + graph->dim]) {
-    neighbors.push_back({current.row + 1, current.col});
+  if (currentR < graph->dim - 1 && graph->grid[current + graph->dim]) {
+    neighbors.push_back(current + graph->dim);
   }
   // element to the left 
-  if (current.col != 0 && graph->grid[i - 1]) {
-    neighbors.push_back({current.row, current.col - 1});
+  if (currentC != 0 && graph->grid[current - 1]) {
+    neighbors.push_back(current - 1);
   }
   // element to the right
-  if (current.col < graph->dim - 1 && graph->grid[i + 1]) {
-    neighbors.push_back({current.row, current.col + 1});
+  if (currentC < graph->dim - 1 && graph->grid[current + 1]) {
+    neighbors.push_back(current + 1);
   }
   return neighbors;
 }
@@ -45,8 +52,8 @@ std::vector<node_t> getNeighbors(node_t current, std::shared_ptr<graph_t> graph,
  * uses the cameFrom map to reconstruct the path from the current (target) node
  * and returns it as a vector in reverse order of the path.
 */
-std::vector<node_t> reconstructPath(std::unordered_map<node_t, node_t, node_hash_t> cameFrom, node_t current) {
-  std::vector<node_t> path;
+std::vector<int> reconstructPath(std::unordered_map<int, int> cameFrom, int current) {
+  std::vector<int> path;
   path.emplace_back(current);
   while (cameFrom.find(current) != cameFrom.end()) {
     current = cameFrom.at(current);
@@ -55,25 +62,31 @@ std::vector<node_t> reconstructPath(std::unordered_map<node_t, node_t, node_hash
   return path;
 }
 
-std::vector<node_t> aStar(node_t source, node_t target, std::shared_ptr<graph_t> graph) {
+std::vector<int> aStar(int source, int target, std::shared_ptr<graph_t> graph) {
   std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo> pq;
-  std::unordered_set<node_t, node_hash_t> openSet;
-  std::unordered_map<node_t, node_t, node_hash_t> cameFrom;
-  std::unordered_map<node_t, int, node_hash_t> gScore;
-  std::unordered_map<node_t, int, node_hash_t> fScore;
-  std::vector<node_t> path;
+  std::unordered_set<int> openSet;
+  std::unordered_map<int, int> cameFrom;
+  std::unordered_map<int, int> gScore;
+  std::vector<int> path;
   // initialize open set 
-  pq.push({source, h(source, target)});
+  pq.push({h(source, target), source});
   openSet.insert(source);
 
   // gScore represents the cost of the cheapest path from start to current node
   gScore.insert({source, 0});
-  // fScore represents the total cost f(n) = g(n) + h(n) for any node
-  fScore.insert({source, h(source, target)});
 
-  std::vector<node_t> neighbors;
+  // initialize all other nodes to have an inf g score 
+  for (int i = 0; i < graph->dim; i++) {
+    for (int j = 0; j < graph->dim; j++) {
+      if (i != source / graph->dim || j != source % graph->dim) {
+        gScore.insert({i*graph->dim + j, INT_MAX});
+      }
+    }
+  }
+
+  std::vector<int> neighbors;
   while (!pq.empty()) {
-    node_t current = pq.top().node;
+    int current = pq.top().node;
     // find solution
     if (current == target) {
       path = reconstructPath(cameFrom, current);
@@ -83,18 +96,23 @@ std::vector<node_t> aStar(node_t source, node_t target, std::shared_ptr<graph_t>
     pq.pop();
     openSet.erase(current);
     neighbors = getNeighbors(current, graph, neighbors);
-    for (node_t neighbor: neighbors) { 
-      int neighborScore = gScore.find(neighbor) != gScore.end() ? gScore.at(neighbor) : INT_MAX;
+    for (int neighbor: neighbors) { 
+      int neighborScore = gScore.at(neighbor);
       // every edge has weight 1
       int currentScore = gScore.at(current) + 1;
       if (currentScore < neighborScore) {
-        cameFrom.emplace(neighbor, current);
+        if (cameFrom.find(current) != cameFrom.end()) {
+          if (cameFrom.at(current) != neighbor) {
+            cameFrom.emplace(neighbor, current);
+          }
+        } else {
+          cameFrom.emplace(neighbor, current);
+        }
         gScore.emplace(neighbor, currentScore);
         int neighborfScore = currentScore + h(neighbor, target);
-        fScore.emplace(neighbor, neighborfScore);
         if (openSet.find(neighbor) == openSet.end()) {
           openSet.emplace(neighbor);
-          pq.push({neighbor, neighborfScore});
+          pq.push({neighborfScore, neighbor});
         }
       }
     }
@@ -143,9 +161,9 @@ int main(int argc, char *argv[]) {
   x2 = std::stoi(argv[5]);
   y2 = std::stoi(argv[6]);
 
-  std::shared_ptr<graph_t> graph = readGraph(x1, y1, x2, y2, inputFilename);
-  node_t source = {x1, y1};
-  node_t target = {x2, y2};
+  graph = readGraph(x1, y1, x2, y2, inputFilename);
+  int source = x1*graph->dim + y1;
+  int target = x2*graph->dim + y2;
 
   init_time += duration_cast<dsec>(Clock::now() - init_start).count();
   printf("Initialization Time: %lf.\n", init_time);
@@ -153,11 +171,11 @@ int main(int argc, char *argv[]) {
   auto compute_start = Clock::now();
   double compute_time = 0;
   
-  std::vector<node_t> ret = aStar(source, target, graph);
+  std::vector<int> ret = aStar(source, target, graph);
 
   compute_time += duration_cast<dsec>(Clock::now() - compute_start).count();
   printf("Computation Time: %lf.\n", compute_time);
 
   free(graph->grid);
-  writeOutputSequential(inputFilename, ret);
+  writeOutput(inputFilename, ret, graph);
 }

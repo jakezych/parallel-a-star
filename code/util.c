@@ -1,21 +1,9 @@
-#include <graph.h>
+#include "graph.h"
 #include <fstream>
 #include <vector>
 #include <iostream>
 #include <sstream>
 #include <memory>
-
-
-/* DEBUG */
-void printGraph(graph_t graph) {
-  for (int i = 0; i < graph.dim; i++) {
-    for (int j = 0; j < graph.dim; j++) {
-      printf("%d ", graph.grid[i*graph.dim + j]);
-    }
-    printf("\n");
-  }
-}
-
 
 /* 
   Reads the graph from the input file with the inputted name. The first line of
@@ -68,50 +56,13 @@ std::shared_ptr<graph_t> readGraph(int x1, int y1, int x2, int y2, char *inputFi
   return std::shared_ptr<graph_t>(new graph_t(dim, grid));
 }
 
-
-
 /* 
  * writes the output of the A* algorithm to a file in the following format 
  * rs cs rt ct              where s is the source node and t is the target node 
  * n                        where n is the length of the path 
  * (r1, c1) (r2, c2) ... (rn, cn) the path outputted by the algorithm
  */
- /*
-void writeOutputSequential(char *inputFilename, std::vector<node_t> ret) {
-  std::string full_filename = std::string(inputFilename);
-  std::string base_filename = full_filename.substr(full_filename.find_last_of("/\\") + 1);
-  std::string::size_type const p(base_filename.find_last_of('.'));
-  std::string file_without_extension = base_filename.substr(0, p);
-
-  std::stringstream outputStream;
-  outputStream << "output_" << file_without_extension << ".txt";
-
-  std::string outputName = outputStream.str();
-  std::ofstream outputFile;
-  outputFile.open(outputName);
-  if (!outputFile) {
-    std::cout << "Error opening file " << outputName << std::endl;
-    return;
-  }
-
-  // output the length of the most optimal path (edge weights assumed to be 1)
-  outputFile << ret.size() << std::endl;
-
-  // output the path
-  for (auto n = ret.rbegin(); n != ret.rend(); n++) {
-    outputFile << "(" <<  n->row << "," << n->col << ") "; 
-  }
-  outputFile.close();
-}
-*/
-
-/* 
- * writes the output of the A* algorithm to a file in the following format 
- * rs cs rt ct              where s is the source node and t is the target node 
- * n                        where n is the length of the path 
- * (r1, c1) (r2, c2) ... (rn, cn) the path outputted by the algorithm
- */
-void writeOutputCentralized(char *inputFilename, std::vector<int> ret, std::shared_ptr<graph_t> graph) {
+void writeOutput(char *inputFilename, std::vector<int> ret, std::shared_ptr<graph_t> graph) {
   std::string full_filename = std::string(inputFilename);
   std::string base_filename = full_filename.substr(full_filename.find_last_of("/\\") + 1);
   std::string::size_type const p(base_filename.find_last_of('.'));

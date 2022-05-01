@@ -4,29 +4,9 @@
 #include <cstddef>
 #include <functional>
 
-struct node_t {
-  int row; // row where the node is located
-  int col; // col where the node is located
-
-  node_t() : row(0), col(0) {};
-  node_t(const int r, const int c) : row(r), col(c) {};
-
-  bool operator==(const node_t &other) const {
-    return row == other.row && col == other.col;
-  }
-};
-
-struct node_hash_t {
-public:
-  std::size_t operator()(const node_t n) const
-  {
-    return std::hash<int>()(n.row) ^ std::hash<int>()(n.col);
-  }
-};
-
 typedef struct {
-  node_t node;   // the index corresponding to the node
   int cost;   // the current path score f(n) for the node 
+  int node;   // the index corresponding to the node
 } node_info_t;
 
 struct CompareNodeInfo {
