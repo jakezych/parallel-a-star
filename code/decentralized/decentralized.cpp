@@ -1,5 +1,6 @@
 #include "../graph.h"
 #include "../util.c"
+#include "mpi.h"
 #include <unistd.h>
 #include <ctype.h>
 #include <queue>
@@ -62,7 +63,7 @@ std::vector<int> reconstructPath(std::unordered_map<int, int> cameFrom, int curr
   return path;
 }
 
-std::vector<int> aStar(int source, int target, std::shared_ptr<graph_t> graph) {
+std::vector<int> aStar(int source, int target, std::shared_ptr<graph_t> graph, int nproc, int procID) {
   std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo> pq;
   std::unordered_set<int> openSet;
   std::unordered_map<int, int> cameFrom;
@@ -131,19 +132,26 @@ int main(int argc, char *argv[]) {
   auto init_start = Clock::now();
   double init_time = 0;
 
+  int procID;
+  int nproc;
   int opt = 0;
   char *inputFilename = NULL;
   int x1 = -1;
   int y1 = -1;
   int x2 = -1;
   int y2 = -1;
-  // Read command line arguments
 
+  MPI_Init(&argc, &argv);
+
+  // Read command line arguments
   do {
-    opt = getopt(argc, argv, "f:");
+    opt = getopt(argc, argv, "f:n:");
     switch (opt) {
     case 'f':
       inputFilename = optarg;
+      break;
+    case 'n':
+      nproc = atoi(optarg);
       break;
     case -1:
       break;
@@ -152,30 +160,36 @@ int main(int argc, char *argv[]) {
     }
   } while (opt != -1);
 
-  if (inputFilename == NULL || argc < 7) {
-      printf("Usage: %s -f <filename> <x1> <y1> <x2> <y2>\n", argv[0]);
+  if (inputFilename == NULL || argc < 8) {
+      printf("Usage: %s -f <filename> -n <num_procs> <x1> <y1> <x2> <y2>\n", argv[0]);
       return -1;
   }
-  x1 = std::stoi(argv[3]);
-  y1 = std::stoi(argv[4]);
-  x2 = std::stoi(argv[5]);
-  y2 = std::stoi(argv[6]);
+  x1 = std::stoi(argv[5]);
+  y1 = std::stoi(argv[6]);
+  x2 = std::stoi(argv[7]);
+  y2 = std::stoi(argv[8]);
 
   graph = readGraph(x1, y1, x2, y2, inputFilename);
   int source = x1*graph->dim + y1;
   int target = x2*graph->dim + y2;
 
   init_time += duration_cast<dsec>(Clock::now() - init_start).count();
+
   printf("Initialization Time: %lf.\n", init_time);
 
-  auto compute_start = Clock::now();
-  double compute_time = 0;
+  double startTime;
+  double endTime;
   
-  std::vector<int> ret = aStar(source, target, graph);
+  startTime = MPI_Wtime();
+  std::vector<int> ret = aStar(source, target, graph, nproc, procID);
+  endTime = MPI_Wtime();
 
-  compute_time += duration_cast<dsec>(Clock::now() - compute_start).count();
-  printf("Computation Time: %lf.\n", compute_time);
+  MPI_Finalize();
+  printf("Computation Time for proc %d: %f", procID, endTime-startTime);
+  
 
   free(graph->grid);
-  writeOutput(inputFilename, ret, graph);
+  if (procID == 0) {
+    writeOutput(inputFilename, ret, graph);
+  }
 }
