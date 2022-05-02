@@ -106,54 +106,61 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
   int nodeRecvBuf[3];
   int nodeSendBuf[3];
   std::vector<int> neighbors;
+  int outstandingNodeRequest = 0;
+  int outstandingPathRequest = 0;
   while (true) { 
     int nodeReady;
-    // check whether or not a node is ready to be processed
-    for (int i = 0; i < nproc; i++) {
-      MPI_Irecv(&nodeRecvBuf, 3, MPI_INT, i, 0, MPI_COMM_WORLD, &nodeRequests[i]);
-      MPI_Test(&nodeRequests[i], &nodeReady, &nodeStatuses[i]);
-      
-      printf("proc %d nodeReady: %d check for proc %d\n", procID, nodeReady, i);
-      if (nodeReady) {
-        // buffer can be processed 
-        int neighbor = nodeRecvBuf[0];
-        int currentScore = nodeRecvBuf[1];
-        int current = nodeRecvBuf[2]; 
-        printf("proc %d processing (%d, %d, %d)\n", procID, neighbor, currentScore, current);
-        int neighborScore = gScore.at(neighbor);
-        if (currentScore < neighborScore) {
-          printf("proc %d currentScore %d neighborScore %d\n", procID, currentScore, neighborScore);
-          if (cameFrom.find(current) != cameFrom.end()) {
-            if (cameFrom.at(current) != neighbor) {
-              cameFrom.emplace(neighbor, current);
-            }
-          } else {
+    if (!outstandingNodeRequest) {
+      // check whether or not a node is ready to be processed
+      MPI_Irecv(&nodeRecvBuf, 3, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &nodeRequests[procID]);
+      outstandingNodeRequest = 1;
+    }
+    MPI_Test(&nodeRequests[procID], &nodeReady, &nodeStatuses[procID]);
+    
+    // printf("proc %d nodeReady: %d\n", procID, nodeReady);
+    if (nodeReady) {
+      outstandingNodeRequest = 0; 
+      // buffer can be processed 
+      int neighbor = nodeRecvBuf[0];
+      int currentScore = nodeRecvBuf[1];
+      int current = nodeRecvBuf[2]; 
+      printf("proc %d processing (%d, %d, %d)\n", procID, neighbor, currentScore, current);
+      int neighborScore = gScore.at(neighbor);
+      if (currentScore < neighborScore) {
+        // printf("proc %d currentScore %d neighborScore %d\n", procID, currentScore, neighborScore);
+        if (cameFrom.find(current) != cameFrom.end()) {
+          if (cameFrom.at(current) != neighbor) {
             cameFrom.emplace(neighbor, current);
           }
-          // check if this is working
-          gScore.erase(neighbor);
-          gScore.emplace(neighbor, currentScore);
-          printf("proc %d neighbor: %d gscore: %d\n", procID, neighbor, gScore.at(neighbor));
-          int neighborfScore = currentScore + h(neighbor, target);
-          if (openSet.find(neighbor) == openSet.end()) {
-            openSet.emplace(neighbor);
-            pq.push({neighborfScore, neighbor});
-          }
+        } else {
+          cameFrom.emplace(neighbor, current);
+        }
+        gScore.erase(neighbor);
+        gScore.emplace(neighbor, currentScore);
+        // printf("proc %d neighbor: %d gscore: %d\n", procID, neighbor, gScore.at(neighbor));
+        int neighborfScore = currentScore + h(neighbor, target);
+        if (openSet.find(neighbor) == openSet.end()) {
+          openSet.emplace(neighbor);
+          pq.push({neighborfScore, neighbor});
         }
       }
     }
+    
     int newPathCostExists;
-    // printf("cost source: %d\n", costStatuses[procID].MPI_SOURCE);
-    MPI_Irecv(&pathCostBuf, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &costRequests[procID]);
+    if (!outstandingPathRequest) {
+      MPI_Irecv(&pathCostBuf, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &costRequests[procID]);
+      outstandingPathRequest = 1;
+    }
     // check if message with new path cost was received
     MPI_Test(&costRequests[procID], &newPathCostExists, &costStatuses[procID]);
     if (newPathCostExists) {
+      outstandingPathRequest = 0;
       printf("proc %d received new cost %d\n", procID, pathCostBuf);
       pathCost = pathCostBuf;
       // need to prove that there is no better solution 
       // check local open list to see if there is no more work to be done 
       // also need to ensure no other messages are being sent 
-      if (pq.empty()) {
+      if (pq.empty() || pq.top().cost >= pathCost) {
         MPI_Status doneStatus;
         int messageExists; 
         MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &messageExists, &doneStatus);
@@ -174,7 +181,7 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
     int current = pq.top().node;
     pq.pop();
     openSet.erase(current);
-    printf("proc %d current: %d\n", procID, current);
+    // printf("proc %d current: %d\n", procID, current);
     // solution found
     if (current == target) {
       path = reconstructPath(cameFrom, current);
