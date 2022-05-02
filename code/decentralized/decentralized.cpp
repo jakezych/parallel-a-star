@@ -15,6 +15,12 @@ std::shared_ptr<graph_t> graph;
 
 const static int MAX_PROCS = 64;
 
+// request status variables 
+MPI_Request nodeRequests[MAX_PROCS];
+MPI_Request costRequests[MAX_PROCS];
+MPI_Status nodeStatuses[MAX_PROCS];
+MPI_Status costStatuses[MAX_PROCS];
+
 // heuristic function 
 int h(int source, int target) {
   int sourceR = source / graph->dim;
@@ -66,7 +72,7 @@ std::vector<int> reconstructPath(std::unordered_map<int, int> cameFrom, int curr
 }
 
 int computeRecipient(int nprocs) {
-  return rand() % nprocs;
+  return std::rand() % nprocs;
 }
 
 void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<int> path, int nproc, int procID) {
@@ -76,22 +82,18 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
   std::unordered_map<int, int> gScore;  
   int pathCost = INT_MAX;
   int pathCostBuf;
-
-  // request status variables 
-  MPI_Request nodeRequests[MAX_PROCS];
-  MPI_Request costRequests[MAX_PROCS];
-  MPI_Status nodeStatuses[MAX_PROCS];
-  MPI_Status costStatuses[MAX_PROCS];
+  printf("procID in a*:%d\n", procID);
+  printf("nproc in a*:%d\n", nproc);
   
   // initialize open set for the recipient processor
   if (procID == computeRecipient(nproc)) {
+    printf("proc %d initializes pq\n", procID);
     pq.push({h(source, target), source});
     openSet.insert(source);
 
     // gScore represents the cost of the cheapest path from start to current node
-    gScore.insert({source, 0});
-    // TODO: verify that ^ should be here 
   }
+  gScore.insert({source, 0});
 
   // initialize all other nodes to have an inf g score 
   for (int i = 0; i < graph->dim; i++) {
@@ -106,80 +108,102 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
   std::vector<int> neighbors;
   while (true) { 
     int nodeReady;
-    MPI_Irecv(&nodeRecvBuf, 3, MPI_INT, nodeStatuses[procID].MPI_SOURCE, 0, MPI_COMM_WORLD, &nodeRequests[procID]);
     // check whether or not a node is ready to be processed
-    MPI_Test(&nodeRequests[procID], &nodeReady, &nodeStatuses[procID]);
-    if (nodeReady) {
-      // buffer can be processed
-      int neighbor = nodeRecvBuf[0];
-      int currentScore = nodeRecvBuf[1];
-      int current = nodeRecvBuf[2]; 
-      int neighborScore = gScore.at(neighbor);
-      if (currentScore < neighborScore) {
-        if (cameFrom.find(current) != cameFrom.end()) {
-          if (cameFrom.at(current) != neighbor) {
+    for (int i = 0; i < nproc; i++) {
+      MPI_Irecv(&nodeRecvBuf, 3, MPI_INT, i, 0, MPI_COMM_WORLD, &nodeRequests[i]);
+      MPI_Test(&nodeRequests[i], &nodeReady, &nodeStatuses[i]);
+      
+      printf("proc %d nodeReady: %d check for proc %d\n", procID, nodeReady, i);
+      if (nodeReady) {
+        // buffer can be processed 
+        int neighbor = nodeRecvBuf[0];
+        int currentScore = nodeRecvBuf[1];
+        int current = nodeRecvBuf[2]; 
+        printf("proc %d processing (%d, %d, %d)\n", procID, neighbor, currentScore, current);
+        int neighborScore = gScore.at(neighbor);
+        if (currentScore < neighborScore) {
+          printf("proc %d currentScore %d neighborScore %d\n", procID, currentScore, neighborScore);
+          if (cameFrom.find(current) != cameFrom.end()) {
+            if (cameFrom.at(current) != neighbor) {
+              cameFrom.emplace(neighbor, current);
+            }
+          } else {
             cameFrom.emplace(neighbor, current);
           }
-        } else {
-          cameFrom.emplace(neighbor, current);
-        }
-        gScore.emplace(neighbor, currentScore);
-        int neighborfScore = currentScore + h(neighbor, target);
-        if (openSet.find(neighbor) == openSet.end()) {
-          openSet.emplace(neighbor);
-          pq.push({neighborfScore, neighbor});
-        }
-      }
-    } else {
-      int newPathCostExists;
-      MPI_Irecv(&pathCostBuf, 1, MPI_INT, costStatuses[procID].MPI_SOURCE, 1, MPI_COMM_WORLD, &costRequests[procID]);
-      // check if message with new path cost was received
-      MPI_Test(&costRequests[procID], &newPathCostExists, &costStatuses[procID]);
-      if (newPathCostExists) {
-        pathCost = pathCostBuf;
-      }
-
-      // if no work in local queue and no messages being sent, terminate
-      if (pq.empty() || pq.top().cost >= pathCost) {
-        MPI_Status done;
-        int dataSize;
-        MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &done);
-        MPI_Get_count(&done, MPI_INT, &dataSize);
-        // no messages being sent
-        if (dataSize == 0) {
-          break;
-        } else {
-          continue;
+          // check if this is working
+          gScore.erase(neighbor);
+          gScore.emplace(neighbor, currentScore);
+          printf("proc %d neighbor: %d gscore: %d\n", procID, neighbor, gScore.at(neighbor));
+          int neighborfScore = currentScore + h(neighbor, target);
+          if (openSet.find(neighbor) == openSet.end()) {
+            openSet.emplace(neighbor);
+            pq.push({neighborfScore, neighbor});
+          }
         }
       }
-
-      int current = pq.top().node;
-      pq.pop();
-      openSet.erase(current);
-      // solution found
-      if (current == target) {
-        path = reconstructPath(cameFrom, current);
-        pathCost = path.size();
-        // broadcast new path cost 
-        for (int i = 0; i < nproc; i++) {
-          MPI_Isend(&pathCost, 1, MPI_INT, i, 1, MPI_COMM_WORLD, &costRequests[i]);
-        }
-        break;
-      }
-      neighbors = getNeighbors(current, graph, neighbors);
-      for (int neighbor: neighbors) {
-        int currentScore = gScore.at(current) + 1;
-        nodeSendBuf[0] = neighbor;
-        nodeSendBuf[1] = currentScore;
-        nodeSendBuf[2] = current;
-        int recipient = computeRecipient(nproc);
-        // send neighbor to be processed by another processor
-        MPI_Isend(&nodeSendBuf, 3, MPI_INT, recipient, 0, MPI_COMM_WORLD, &nodeRequests[recipient]);
-      }
-      neighbors.clear();
     }
+    int newPathCostExists;
+    // printf("cost source: %d\n", costStatuses[procID].MPI_SOURCE);
+    MPI_Irecv(&pathCostBuf, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &costRequests[procID]);
+    // check if message with new path cost was received
+    MPI_Test(&costRequests[procID], &newPathCostExists, &costStatuses[procID]);
+    if (newPathCostExists) {
+      printf("proc %d received new cost %d\n", procID, pathCostBuf);
+      pathCost = pathCostBuf;
+      // need to prove that there is no better solution 
+      // check local open list to see if there is no more work to be done 
+      // also need to ensure no other messages are being sent 
+      if (pq.empty()) {
+        MPI_Status doneStatus;
+        int messageExists; 
+        MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &messageExists, &doneStatus);
+        printf("proc %d message exists check %d\n", procID, messageExists);
+        if (messageExists == 0) {
+          printf("proc %d exiting\n", procID);
+          break;
+        }
+      }
+    }
+
+    // if no work in local queue and no messages loop
+    if (pq.empty() || pq.top().cost >= pathCost) {
+      continue;
+    }
+
+    // nodes exist to be expanded
+    int current = pq.top().node;
+    pq.pop();
+    openSet.erase(current);
+    printf("proc %d current: %d\n", procID, current);
+    // solution found
+    if (current == target) {
+      path = reconstructPath(cameFrom, current);
+      pathCost = path.size();
+      // broadcast new path cost 
+      printf("proc %d broadcasting pathCost %d\n", procID, pathCost);
+      for (int i = 0; i < nproc; i++) {
+        MPI_Isend(&pathCost, 1, MPI_INT, i, 1, MPI_COMM_WORLD, &costRequests[i]);
+      }
+      // TODO: make sure message also being sent to self 
+      continue;
+    }
+
+    neighbors = getNeighbors(current, graph, neighbors);
+    for (int neighbor: neighbors) {
+      // this overflows sometimes (do we need to broadcast gScore updates?? seems like that would defeat the purpose)
+      int currentScore = gScore.at(current) + 1;
+      nodeSendBuf[0] = neighbor;
+      nodeSendBuf[1] = currentScore;
+      nodeSendBuf[2] = current;
+      int recipient = computeRecipient(nproc);
+      // send neighbor to be processed by another processor
+      printf("proc %d sent (%d, %d, %d) to %d\n", procID, neighbor, currentScore, current, recipient);
+      MPI_Isend(&nodeSendBuf, 3, MPI_INT, recipient, 0, MPI_COMM_WORLD, &nodeRequests[recipient]);
+    }
+    neighbors.clear();
   }
 }
+
 
 int main(int argc, char *argv[]) {
   using namespace std::chrono;
@@ -202,13 +226,10 @@ int main(int argc, char *argv[]) {
 
   // Read command line arguments
   do {
-    opt = getopt(argc, argv, "f:n:");
+    opt = getopt(argc, argv, "f:");
     switch (opt) {
     case 'f':
       inputFilename = optarg;
-      break;
-    case 'n':
-      nproc = atoi(optarg);
       break;
     case -1:
       break;
@@ -217,19 +238,15 @@ int main(int argc, char *argv[]) {
     }
   } while (opt != -1);
 
-  if (nproc > MAX_PROCS) {
-    fprintf(stderr, "Error: Max allowed processors is %d\n", MAX_PROCS);
-    exit(1);
-  }
-
-  if (inputFilename == NULL || argc < 8) {
-      printf("Usage: %s -f <filename> -n <num_procs> <x1> <y1> <x2> <y2>\n", argv[0]);
+  if (inputFilename == NULL || argc < 7) {
+      printf("Usage: %s -f <filename> <x1> <y1> <x2> <y2>\n", argv[0]);
+      MPI_Finalize();
       return -1;
   }
-  x1 = std::stoi(argv[5]);
-  y1 = std::stoi(argv[6]);
-  x2 = std::stoi(argv[7]);
-  y2 = std::stoi(argv[8]);
+  x1 = std::stoi(argv[3]);
+  y1 = std::stoi(argv[4]);
+  x2 = std::stoi(argv[5]);
+  y2 = std::stoi(argv[6]);
 
   graph = readGraph(x1, y1, x2, y2, inputFilename);
   int source = x1*graph->dim + y1;
@@ -239,13 +256,12 @@ int main(int argc, char *argv[]) {
 
   // Get process rank
   MPI_Comm_rank(MPI_COMM_WORLD, &procID);
-
   // Get total number of processes specificed at start of run
   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
-  std::vector<int> path;
+  std::vector<int> path(0, 0);
 
-  printf("Initialization Time: %lf.\n", init_time);
+  printf("Initialization Time for proc %d: %lf.\n", procID, init_time);
 
   double startTime;
   double endTime;
@@ -254,17 +270,22 @@ int main(int argc, char *argv[]) {
   aStar(source, target, graph, path, nproc, procID);
   endTime = MPI_Wtime();
 
-  MPI_Finalize();
   printf("Computation Time for proc %d: %f", procID, endTime-startTime);
   
 
   free(graph->grid);
+  // this is causes issues if you don't have a path 
   int pathCost = path.size();
-  int *bestCost = NULL;
-  MPI_Reduce(&pathCost, bestCost, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
+  int *bestCost = (int *)malloc(sizeof(int));
+  printf("proc %d called path.size()\n", procID);
+  // CHANGED THIS TO MPI_MAX 
+  // REWRITE
+  MPI_Reduce(&pathCost, bestCost, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
   // if processor has lowest cost, write the path to file 
   // TODO: might be race conditions here 
   if (path.size() == *bestCost) {
     writeOutput(inputFilename, path, graph);
   }
+
+  MPI_Finalize();
 }
