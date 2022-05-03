@@ -202,9 +202,9 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
     // check if message with new path cost was received
     MPI_Test(&costRequests[procID], &newPathCostExists, &costStatuses[procID]);
     if (newPathCostExists) {
+      outstandingPathRequest = 0;
       if (!validPathExists || pathCostBuf < pathCost) {
         validPathExists = 1;
-        outstandingPathRequest = 0;
         printf("proc %d received new cost %d\n", procID, pathCostBuf);
         pathCost = pathCostBuf;
       }
@@ -216,20 +216,19 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
     if (pq.empty() || pq.top().cost >= pathCost) {
       if (validPathExists) {
         MPI_Status doneStatus;
-        MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &doneStatus);
+        int done;
+        MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &done, &doneStatus);
         printf("proc %d message exists check\n", procID);
-        int count;
-        MPI_Get_count(&doneStatus, MPI_INT, &count);
-        printf("proc %d message count: %d\n", procID, count);
-        if (count == 0) {
+        //int count;
+        //MPI_Get_count(&doneStatus, MPI_INT, &count);
+        printf("proc %d done %d\n", procID, done);
+        if (done == 0) {
           printf("proc %d exiting\n", procID);
           break;
         }
       }
       continue;
     }
-
-    // pq not updating properly!!!
     // nodes exist to be expanded
     int current = pq.top().node;
     printf("proc %d pq size before %d\n", procID, pq.size());
