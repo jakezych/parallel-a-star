@@ -32,9 +32,9 @@ int h(int source, int target) {
   int targetR = target / graph->dim;
   int targetC = target % graph->dim;
   // euclidian distance
-  // return sqrt(std::abs(sourceR - targetR)*std::abs(sourceR - targetR) + std::abs(sourceC - targetC)*std::abs(sourceC - targetC));
+  return sqrt(std::abs(sourceR - targetR)*std::abs(sourceR - targetR) + std::abs(sourceC - targetC)*std::abs(sourceC - targetC));
   // manhatten distance 
-  return std::abs(sourceR - targetR) + std::abs(sourceC - targetC);
+  // return std::abs(sourceR - targetR) + std::abs(sourceC - targetC);
 }
 
 /* 
@@ -112,13 +112,14 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
       if (i != source / graph->dim || j != source % graph->dim) {
         gScore.insert({i*graph->dim + j, INT_MAX});
       }
+      /*
+      if (procID == 0) {
+        printf("computeRecipient(%d, %d) = %d\n", nproc, i*graph->dim+j, computeRecipient(nproc, i*graph->dim+j));
+      }
+      */
     }
   }
-  // tag -> receiving processor (0 reserved for path, 1 reserved for dict)
-  // add 2 to procID 
-  // write computeRecipient 
-    // verify it hashes a state to a value [2, nproc+1]
-  // update all receive and send 
+
   int pathCostBuf;
   int nodeRecvBuf[3];
   int nodeSendBuf[3];
@@ -217,7 +218,7 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
       outstandingPathRequest = 0;
       if (!validPathExists || pathCostBuf < pathCost) {
         validPathExists = 1;
-        // printf("proc %d received new cost %d\n", procID, pathCostBuf);
+        printf("proc %d received new cost %d\n", procID, pathCostBuf);
         pathCost = pathCostBuf;
       }
     }
@@ -273,7 +274,7 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
           outstandingCameFromRequest = 0;
           int neighbor = cameFromBuf[0];
           int current = cameFromBuf[1];
-          // printf("proc %d received dict update (%d, %d)\n", procID, neighbor, current);
+          printf("proc %d received dict update (%d, %d)\n", procID, neighbor, current);
           if (cameFrom.find(current) != cameFrom.end()) {
               if (cameFrom.at(current) != neighbor) {
                 cameFrom.emplace(neighbor, current);
@@ -379,13 +380,11 @@ int main(int argc, char *argv[]) {
   aStar(source, target, graph, path, nproc, procID);
   endTime = MPI_Wtime();
 
-  printf("Computation Time for proc %d: %f", procID, endTime-startTime);
+  printf("Computation Time for proc %d: %f\n", procID, endTime-startTime);
   
 
   free(graph->grid);
 
-  // insert dummy element to not break on processors which have no path
-  printf("proc %d called path.size()\n", procID);
   if (path->size() != 0) {
     printf("proc %d writing path of size %d\n", procID, path->size());
     writeOutput(inputFilename, *path, graph);

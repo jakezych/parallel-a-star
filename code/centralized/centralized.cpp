@@ -151,6 +151,7 @@ void* aStar(void *threadArgs) {
       int currentScore = gScore.at(current.node) + 1;
   
       if (currentScore < neighborScore) {
+        gScore.erase(neighbor);
         gScore.emplace(neighbor, currentScore);
         muxScore.unlock();
         int neighborfScore = currentScore + h(neighbor, args->target);
