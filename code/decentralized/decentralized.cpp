@@ -97,7 +97,6 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
   
   // initialize open set for the recipient processor
   if (procID == computeRecipient(nproc, 0)) {
-    // printf("proc %d initializes pq\n", procID);
     pq.push({h(source, target), source});
     openSet.insert(source);
 
@@ -112,11 +111,6 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
       if (i != source / graph->dim || j != source % graph->dim) {
         gScore.insert({i*graph->dim + j, INT_MAX});
       }
-      /*
-      if (procID == 0) {
-        printf("computeRecipient(%d, %d) = %d\n", nproc, i*graph->dim+j, computeRecipient(nproc, i*graph->dim+j));
-      }
-      */
     }
   }
 
@@ -137,19 +131,16 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
     }
     MPI_Test(&nodeRequests[procID], &nodeReady, &nodeStatuses[procID]);
     
-    // printf("proc %d nodeReady: %d\n", procID, nodeReady);
     if (nodeReady) {
       outstandingNodeRequest = 0; 
       // buffer can be processed 
       int neighbor = nodeRecvBuf[0];
       int currentScore = nodeRecvBuf[1];
       int current = nodeRecvBuf[2]; 
-      // printf("proc %d processing (%d, %d, %d)\n", procID, neighbor, currentScore, current);
       int neighborfScore = currentScore + h(neighbor, target);
       int neighborScore = gScore.at(neighbor);
       if (closedSet.find(neighbor) != closedSet.end()) {
         if (currentScore < neighborScore) {
-          // printf("proc %d adding %d to pq\n", procID, neighbor);
           closedSet.erase(neighbor);
           openSet.insert(neighbor);
           pq.push({neighborfScore, neighbor});
@@ -158,21 +149,17 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
         }
       } else {
         if (openSet.find(neighbor) == openSet.end()) {
-          // printf("proc %d adding %d to pq\n", procID, neighbor);
           openSet.insert(neighbor);
           pq.push({neighborfScore, neighbor});
         } else if (currentScore >= neighborScore) {
           continue;
         }
       }
-
-      // printf("proc %d neighborScore %d\n", procID, neighborScore);
       // key
       cameFromBuf[0] = neighbor;
       // value
       cameFromBuf[1] = current;
       // broadcast all dictionary updates 
-      // printf("proc %d sent dict update (%d, %d)\n", procID, neighbor, current);
       for (int i = 0; i < nproc; i++) {
         MPI_Isend(&cameFromBuf, 2, MPI_INT, i, nproc, MPI_COMM_WORLD, &cameFromRequests[i]);
       }
@@ -190,19 +177,18 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
 
     MPI_Test(&cameFromRequests[procID], &cameFromUpdate, &cameFromStatuses[procID]);
 
-    // when is this gonna stop? there are no more messages? How do you know the path is constructed? 
-    // need to process all? 
     // update cameFrom dictionary 
     if(cameFromUpdate) {
       outstandingCameFromRequest = 0;
       int neighbor = cameFromBuf[0];
       int current = cameFromBuf[1];
-      // printf("proc %d received dict update (%d, %d)\n", procID, neighbor, current);
       if (cameFrom.find(current) != cameFrom.end()) {
           if (cameFrom.at(current) != neighbor) {
+            cameFrom.erase(neighbor);
             cameFrom.emplace(neighbor, current);
           }
         } else {
+          cameFrom.erase(neighbor);
           cameFrom.emplace(neighbor, current);
       }
     }
@@ -218,7 +204,6 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
       outstandingPathRequest = 0;
       if (!validPathExists || pathCostBuf < pathCost) {
         validPathExists = 1;
-        printf("proc %d received new cost %d\n", procID, pathCostBuf);
         pathCost = pathCostBuf;
       }
     }
@@ -231,12 +216,7 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
         MPI_Status doneStatus;
         int done;
         MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &done, &doneStatus);
-        // printf("proc %d message exists check\n", procID);
-        //int count;
-        //MPI_Get_count(&doneStatus, MPI_INT, &count);
-        // printf("proc %d done %d\n", procID, done);
         if (done == 0) {
-          printf("proc %d exiting\n", procID);
           break;
         }
       }
@@ -244,24 +224,16 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
     }
     // nodes exist to be expanded
     int current = pq.top().node;
-    // printf("proc %d pq size before %d\n", procID, pq.size());
     pq.pop();
-    // printf("proc %d pq size after %d\n", procID, pq.size());
     openSet.erase(current);
     closedSet.insert(current);
-    // printf("proc %d closing %d \n", procID, current);
 
     // solution found
     if (current == target) {
       reconstructPath(cameFrom, current, path);
-      printf("proc %d path ", procID);
-      for (auto n = path->rbegin(); n != path->rend(); n++) {
-        printf("%d, ", *n); 
-      }
-      printf("\n");
-      pathCost = path->size();
+      int newPathCost = path->size();
       // while the path is invalid
-      while (pathCost < 2 || path->back() != source) {
+      while (newPathCost < 2 || path->back() != source) {
         // dict update check here 
         int cameFromUpdate; 
         if (!outstandingCameFromRequest) {
@@ -274,27 +246,25 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
           outstandingCameFromRequest = 0;
           int neighbor = cameFromBuf[0];
           int current = cameFromBuf[1];
-          printf("proc %d received dict update (%d, %d)\n", procID, neighbor, current);
           if (cameFrom.find(current) != cameFrom.end()) {
               if (cameFrom.at(current) != neighbor) {
+                cameFrom.erase(neighbor);
                 cameFrom.emplace(neighbor, current);
               }
             } else {
+              cameFrom.erase(neighbor);
               cameFrom.emplace(neighbor, current);
           }
         }
         reconstructPath(cameFrom, current, path);
-        printf("proc %d path ", procID);
-        for (auto n = path->rbegin(); n != path->rend(); n++) {
-          printf("%d, ", *n); 
-        }
-        printf("\n");
-        pathCost = path->size();
+        newPathCost = path->size();
       }
-      // broadcast new path cost 
-      printf("proc %d broadcasting pathCost %d\n", procID, pathCost);
-      for (int i = 0; i < nproc; i++) {
-        MPI_Isend(&pathCost, 1, MPI_INT, i, nproc+1, MPI_COMM_WORLD, &costRequests[i]);
+      // only broadcast if a better solution is found
+      if (newPathCost < pathCost) {
+        // broadcast new path cost 
+        for (int i = 0; i < nproc; i++) {
+          MPI_Isend(&newPathCost, 1, MPI_INT, i, nproc+1, MPI_COMM_WORLD, &costRequests[i]);
+        }
       }
       continue;
     }
@@ -307,7 +277,6 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
       nodeSendBuf[2] = current;
       int recipient = computeRecipient(nproc, neighbor);
       // send neighbor to be processed by another processor
-      // printf("proc %d sent (%d, %d, %d) to %d\n", procID, neighbor, currentScore, current, recipient);
       MPI_Isend(&nodeSendBuf, 3, MPI_INT, recipient, recipient, MPI_COMM_WORLD, &nodeRequests[recipient]);
     }
     neighbors.clear();
@@ -382,13 +351,10 @@ int main(int argc, char *argv[]) {
 
   printf("Computation Time for proc %d: %f\n", procID, endTime-startTime);
   
-
-  free(graph->grid);
-
   if (path->size() != 0) {
-    printf("proc %d writing path of size %d\n", procID, path->size());
     writeOutput(inputFilename, *path, graph);
   }
   free(path);
+  free(graph->grid);
   MPI_Finalize();
 }
