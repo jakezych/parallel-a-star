@@ -63,21 +63,20 @@ std::vector<int> getNeighbors(int current, std::shared_ptr<graph_t> graph, std::
  * uses the cameFrom map to reconstruct the path from the current (target) node
  * and returns it as a vector in reverse order of the path.
 */
-std::vector<int> reconstructPath(std::unordered_map<int, int> cameFrom, int current) {
-  std::vector<int> path;
-  path.emplace_back(current);
+void reconstructPath(std::unordered_map<int, int> cameFrom, int current, std::vector<int> *path) {
+  path->clear();
+  path->emplace_back(current);
   while (cameFrom.find(current) != cameFrom.end()) {
     current = cameFrom.at(current);
-    path.emplace_back(current);
+    path->emplace_back(current);
   }
-  return path;
 }
 
 int computeRecipient(int nprocs) {
   return std::rand() % nprocs;
 }
 
-void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<int> path, int nproc, int procID) {
+void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<int> *path, int nproc, int procID) {
   std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo> pq;
   std::unordered_set<int> openSet;
   std::unordered_map<int, int> cameFrom;
@@ -154,7 +153,7 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
         }
       }
 
-      printf("proc %d neighborScore %d", procID, neighborScore);
+      printf("proc %d neighborScore %d\n", procID, neighborScore);
       // key
       cameFromBuf[0] = neighbor;
       // value
@@ -240,15 +239,15 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
 
     // solution found
     if (current == target) {
-      path = reconstructPath(cameFrom, current);
+      reconstructPath(cameFrom, current, path);
       printf("proc %d path ", procID);
-      for (auto n = path.rbegin(); n != path.rend(); n++) {
+      for (auto n = path->rbegin(); n != path->rend(); n++) {
         printf("%d, ", *n); 
       }
       printf("\n");
-      pathCost = path.size();
+      pathCost = path->size();
       // while the path is invalid
-      while (pathCost < 2 || path.back() != source) {
+      while (pathCost < 2 || path->back() != source) {
         // dict update check here 
         int cameFromUpdate; 
         if (!outstandingCameFromRequest) {
@@ -270,13 +269,13 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
               cameFrom.emplace(neighbor, current);
           }
         }
-        path = reconstructPath(cameFrom, current);
+        reconstructPath(cameFrom, current, path);
         printf("proc %d path ", procID);
-        for (auto n = path.rbegin(); n != path.rend(); n++) {
+        for (auto n = path->rbegin(); n != path->rend(); n++) {
           printf("%d, ", *n); 
         }
         printf("\n");
-        pathCost = path.size();
+        pathCost = path->size();
       }
       // broadcast new path cost 
       printf("proc %d broadcasting pathCost %d\n", procID, pathCost);
@@ -356,7 +355,7 @@ int main(int argc, char *argv[]) {
   // Get total number of processes specificed at start of run
   MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 
-  std::vector<int> path(0, 0);
+  std::vector<int> *path = new std::vector<int>;
 
   printf("Initialization Time for proc %d: %lf.\n", procID, init_time);
 
@@ -371,18 +370,13 @@ int main(int argc, char *argv[]) {
   
 
   free(graph->grid);
-  // this is causes issues if you don't have a path 
-  int pathCost = path.size();
-  int *bestCost = (int *)malloc(sizeof(int));
-  printf("proc %d called path.size()\n", procID);
-  // CHANGED THIS TO MPI_MAX 
-  // REWRITE
-  MPI_Reduce(&pathCost, bestCost, 1, MPI_INT, MPI_MAX, 0, MPI_COMM_WORLD);
-  // if processor has lowest cost, write the path to file 
-  // TODO: might be race conditions here 
-  if (path.size() == *bestCost) {
-    writeOutput(inputFilename, path, graph);
-  }
 
+  // insert dummy element to not break on processors which have no path
+  printf("proc %d called path.size()\n", procID);
+  if (path->size() != 0) {
+    printf("proc %d writing path of size %d\n", procID, path->size());
+    writeOutput(inputFilename, *path, graph);
+  }
+  free(path);
   MPI_Finalize();
 }
