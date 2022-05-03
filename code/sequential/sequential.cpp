@@ -108,6 +108,7 @@ std::vector<int> aStar(int source, int target, std::shared_ptr<graph_t> graph) {
         } else {
           cameFrom.emplace(neighbor, current);
         }
+        gScore.erase(neighbor);
         gScore.emplace(neighbor, currentScore);
         int neighborfScore = currentScore + h(neighbor, target);
         if (openSet.find(neighbor) == openSet.end()) {

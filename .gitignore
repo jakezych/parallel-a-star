@@ -32,3 +32,8 @@
 *.app
 
 *.DS_Store
+
+code/golang_impl/pkg/*
+code/golang_impl/bin/*
+code/golang_impl/src/github.com/418astar/gosequential/*.txt
+.vscode

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"path"
 )
 
 // A NodeInfo is something we manage in a priority queue.
@@ -24,7 +25,7 @@ func (pq PriorityQueue) Len() int { return len(pq) }
 
 func (pq PriorityQueue) Less(i, j int) bool {
 	// We want Pop to give us the highest, not lowest, priority so we use greater than here.
-	return pq[i].Cost > pq[j].Cost
+	return pq[i].Cost < pq[j].Cost
 }
 
 func (pq PriorityQueue) Swap(i, j int) {
@@ -79,11 +80,11 @@ func ReadGraph(x1, y1, x2, y2 int, inputFilename string) *Graph {
 	
 	dim, _ := strconv.Atoi(scanner.Text())
 	if x1 < 0 || x1 >= dim || y1 < 0 || y1 >= dim {
-		fmt.Println("First path point dimension error: ", x1, ", ", y1, " out of bounds for graph of dim ", dim)
+		fmt.Println("First path point dimension error:", x1, y1, "out of bounds for graph of dim", dim)
     return nil;
   }
 	if x2 < 0 || x2 >= dim || y2 < 0 || y2 >= dim {
-		fmt.Println("Second path point dimension error: ", x2, ", ", y2, " out of bounds for graph of dim ", dim)
+		fmt.Println("Second path point dimension error:", x2, y2, "out of bounds for graph of dim", dim)
     return nil;
   }
 	
@@ -102,4 +103,29 @@ func ReadGraph(x1, y1, x2, y2 int, inputFilename string) *Graph {
 	}
 
 	return g
+}
+
+func WriteOutput(inputFilename string, ret []int, graph *Graph) {
+	_, fileName := path.Split(inputFilename)
+	newFileName := "output_" + fileName
+
+	file, err := os.Create(newFileName)
+	if err != nil {
+		fmt.Println("Error creating file ", newFileName)
+		return
+	}
+
+	writer := bufio.NewWriter(file)
+	_, err = writer.WriteString(strconv.Itoa(len(ret)) + "\n")
+	if err != nil {
+		fmt.Println("Error writing file ", newFileName)
+		return
+	}
+
+	for i := len(ret)-1; i >= 0; i-- {
+		row := ret[i] / graph.Dim
+		col := ret[i] % graph.Dim
+		writer.WriteString("(" + strconv.Itoa(row) + "," + strconv.Itoa(col) + ") ")
+	}
+	writer.Flush()
 }

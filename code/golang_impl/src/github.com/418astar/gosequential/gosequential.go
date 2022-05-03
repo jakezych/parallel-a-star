@@ -6,7 +6,7 @@ import (
 	"math"
 	"os"
 	"strconv"
-
+	"time"
 	"github.com/418astar/goutil"
 )
 
@@ -24,8 +24,12 @@ func h(source, target int) int {
 func reconstructPath(cameFrom map[int]int, current int) []int {
 	path := make([]int, 1)
 	path[0] = current
-	for _, exists := cameFrom[current]; exists; {
+	for {
+		if _, exists := cameFrom[current]; !exists {
+			break
+		}
 		current = cameFrom[current]
+		// fmt.Println("current =", current)
 		path = append(path, current)
 	}
 	return path
@@ -56,8 +60,7 @@ func getNeighbors(current int) []int {
 
 func astar(source, target int) []int {
 	//init priority queue
-	pqItems := map[int]int{}
-	pq := make(goutil.PriorityQueue, len(pqItems))
+	pq := make(goutil.PriorityQueue, 0)
 	heap.Init(&pq)
 
 	openSet := make(map[int]struct{})
@@ -83,20 +86,26 @@ func astar(source, target int) []int {
 
 	var neighbors []int
 	for pq.Len() > 0 {
+		// fmt.Println("beg loop, pq size =", pq.Len())
 		current := heap.Pop(&pq).(*goutil.NodeInfo).Node
 		if current == target {
 			path = reconstructPath(cameFrom, current)
+			// fmt.Println("path found, len = ", len(path))
 			break
 		}
 
 		delete(openSet, current)
 		neighbors = getNeighbors(current)
-		for neighbor := range neighbors {
+		for _, neighbor := range neighbors {
+			// fmt.Println("current =", current, "neighbor =", neighbor)
 			neighborScore := gScore[neighbor]
-			currentScore := gScore[current]
+			currentScore := gScore[current] + 1
 
+			// fmt.Println("curr score", currentScore, ", neighbor score", neighborScore)
 			if currentScore < neighborScore {
-				if elem, exists := cameFrom[current]; !exists || elem != neighbor {
+				if elem, exists := cameFrom[current]; exists && elem != neighbor {
+					cameFrom[neighbor] = current
+				} else {
 					cameFrom[neighbor] = current
 				}
 				gScore[neighbor] = currentScore
@@ -107,6 +116,7 @@ func astar(source, target int) []int {
 						Node: neighbor,
 						Cost: neighborFScore,
 					}
+					// fmt.Println("pushing node onto pq:", neighbor)
 					heap.Push(&pq, node)
 				}
 			}
@@ -116,6 +126,8 @@ func astar(source, target int) []int {
 }
 
 func main() {
+	startTime := time.Now()
+
 	if len(os.Args) < 6 {
 		fmt.Println("Usage: go run <filename> <x1> <y1> <x2> <y2>")
 		return
@@ -133,11 +145,17 @@ func main() {
 		return
 	}
 
+	initTime := time.Since(startTime)
+	fmt.Println("Initialization Time: ", initTime)
+
+	midTime := time.Now()
+
 	source := x1*graph.Dim + y1
 	target := x2*graph.Dim + y2
 	path := astar(source, target)
 
-	for i := range path {
-		fmt.Print(i, ", ")
-	}
+	computeTime := time.Since(midTime)
+	fmt.Println("Computation Time: ", computeTime)
+
+	goutil.WriteOutput(inputFilename, path, graph)
 }
