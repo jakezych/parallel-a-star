@@ -33,6 +33,7 @@ int pathCost = INT_MAX;
 
 std::priority_queue<node_info_t, std::vector<node_info_t>, CompareNodeInfo> pq;
 std::unordered_set<int> openSet;
+std::unordered_set<int> closedSet;
 std::unordered_map<int, int> cameFrom;
 std::unordered_map<int, int> gScore;
 std::vector<int> path;
@@ -81,13 +82,10 @@ std::vector<int> getNeighbors(int current, std::vector<int> neighbors) {
 std::vector<int> reconstructPath(int current) {
   std::vector<int> path;
   path.emplace_back(current);
-  printf("path added %d\n", current);
   while (cameFrom.find(current) != cameFrom.end()) {
     current = cameFrom.at(current);
     path.emplace_back(current);
-    printf("path added %d\n", current);
   }
-  printf("reconstructed path, len = %d\n", path.size());
   return path;
 }
 
@@ -124,6 +122,7 @@ void* aStar(void *threadArgs) {
     node_info_t current = pq.top();
     pq.pop();
     openSet.erase(current.node);
+    closedSet.insert(current.node);
     muxPq.unlock();
 
     // if waiting and pq is no longer empty
@@ -143,41 +142,53 @@ void* aStar(void *threadArgs) {
       muxCameFrom.lock();
       path = reconstructPath(current.node);
       pathCost = current.cost;
+      int start = path.back();
       muxCameFrom.unlock();
+      continue;
     }
 
     neighbors = getNeighbors(current.node, neighbors);
     for (int neighbor: neighbors) { 
       muxScore.lock();
-      
       int neighborScore = gScore.at(neighbor);
       int currentScore = gScore.at(current.node) + 1;
-  
-      if (currentScore < neighborScore) {
-        gScore.erase(neighbor);
-        gScore.emplace(neighbor, currentScore);
-        muxScore.unlock();
-        int neighborfScore = currentScore + h(neighbor, args->target);
-
-        muxCameFrom.lock();
-        // if the neighbor is current parent, current cannot be parent 
-        if (cameFrom.find(current.node) != cameFrom.end()) {
-          if (cameFrom.at(current.node) != neighbor) {
-            cameFrom.emplace(neighbor, current.node);
-          }
-        } else {
-          cameFrom.emplace(neighbor, current.node);
-        }
-        muxCameFrom.unlock();
-        
-        muxPq.lock();
-        if (openSet.find(neighbor) == openSet.end()) {
+      muxScore.unlock();
+      muxPq.lock();
+      bool inClosed = closedSet.find(neighbor) != closedSet.end();
+      bool inOpen = openSet.find(neighbor) != openSet.end();
+      muxPq.unlock();
+      int neighborfScore = currentScore + h(neighbor, args->target);
+      if (inClosed) {
+        if (currentScore < neighborScore) {
+          muxPq.lock();
+          closedSet.erase(neighbor);
           openSet.emplace(neighbor);
           pq.push({neighborfScore, neighbor});
+          muxPq.unlock();
+        } else {
+          continue;
         }
-        muxPq.unlock();
+      } else {
+          if (!inOpen) {
+            muxPq.lock();
+            openSet.emplace(neighbor);
+            pq.push({neighborfScore, neighbor});
+            muxPq.unlock();
+          } else if (currentScore >= neighborScore) {
+              continue;
+          }
       }
-      muxScore.unlock();
+
+      muxScore.lock();
+      gScore.erase(neighbor);
+      gScore.emplace(neighbor, currentScore);
+      muxScore.unlock();  
+      
+      
+      muxCameFrom.lock();
+      cameFrom.emplace(neighbor, current.node);
+      muxCameFrom.unlock();
+      
     }
     neighbors.clear();
   }
@@ -241,6 +252,7 @@ int main(int argc, char *argv[]) {
 
   int source = x1*graph->dim + y1;
   int target = x2*graph->dim + y2;
+  printf("source: %d, target: %d\n", source, target);
 
   for (int i = 0; i < numThreads; i++) {
     args[i].threadId = i;
@@ -249,7 +261,7 @@ int main(int argc, char *argv[]) {
     args[i].target = target;
   }
 
-  pq.push({source, h(source, target)});
+  pq.push({h(source, target), source});
   openSet.insert(source);
 
   // gScore represents the cost of the cheapest path from start to current node
@@ -258,7 +270,8 @@ int main(int argc, char *argv[]) {
   // initialize all other nodes to have an inf g score 
   for (int i = 0; i < graph->dim; i++) {
     for (int j = 0; j < graph->dim; j++) {
-      if (i != source / graph->dim || j != source % graph->dim) {
+      int index = i*graph->dim + j;
+      if (index != source) {
         gScore.insert({i*graph->dim + j, INT_MAX});
       }
     }
