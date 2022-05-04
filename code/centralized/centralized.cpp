@@ -81,10 +81,13 @@ std::vector<int> getNeighbors(int current, std::vector<int> neighbors) {
 std::vector<int> reconstructPath(int current) {
   std::vector<int> path;
   path.emplace_back(current);
+  printf("path added %d\n", current);
   while (cameFrom.find(current) != cameFrom.end()) {
     current = cameFrom.at(current);
     path.emplace_back(current);
+    printf("path added %d\n", current);
   }
+  printf("reconstructed path, len = %d\n", path.size());
   return path;
 }
 
@@ -224,6 +227,7 @@ int main(int argc, char *argv[]) {
   x2 = std::stoi(argv[7]);
   y2 = std::stoi(argv[8]);
   graph = readGraph(x1, y1, x2, y2, inputFilename);
+  printf("(%d, %d) to (%d, %d)\n", x1, y1, x2, y2);
   
   const static int MAX_THREADS = 32;
 
@@ -278,5 +282,5 @@ int main(int argc, char *argv[]) {
   printf("Computation Time: %lf.\n", compute_time);
 
   free(graph->grid);
-  writeOutputCentralized(inputFilename, path, graph);
+  writeOutput(inputFilename, path, graph);
 }
