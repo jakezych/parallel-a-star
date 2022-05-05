@@ -46,7 +46,9 @@ int h(int source, int target) {
   int targetR = target / graph->dim;
   int targetC = target % graph->dim;
   // euclidian distance
-  return sqrt(std::abs(sourceR - targetR)*std::abs(sourceR - targetR) + std::abs(sourceC - targetC)*std::abs(sourceC - targetC));
+  // return sqrt(std::abs(sourceR - targetR)*std::abs(sourceR - targetR) + std::abs(sourceC - targetC)*std::abs(sourceC - targetC));
+  // manhatten distance 
+  return std::abs(sourceR - targetR) + std::abs(sourceC - targetC);
 }
 
 /* 
@@ -82,9 +84,11 @@ std::vector<int> getNeighbors(int current, std::vector<int> neighbors) {
 std::vector<int> reconstructPath(int current) {
   std::vector<int> path;
   path.emplace_back(current);
+  printf("path %d current \n", current);
   while (cameFrom.find(current) != cameFrom.end()) {
     current = cameFrom.at(current);
     path.emplace_back(current);
+    printf("path %d current \n", current);
   }
   return path;
 }
@@ -98,6 +102,7 @@ void* aStar(void *threadArgs) {
     muxTermCount.lock();
     // check whether all threads have terminated 
     if (termCount == args->numThreads) {
+      printf("%d exiting\n", args->threadId);
       muxTermCount.unlock();
       break;
     }
@@ -107,10 +112,12 @@ void* aStar(void *threadArgs) {
     int curPathCost = pathCost;
     muxPath.unlock();
     // if a thread sees an empty queue, enters waiting state
+    // printf("%d acquiring lock before empty check\n", args->threadId);
     muxPq.lock();
     if ((pq.empty() || pq.top().cost >= curPathCost)) {
       muxPq.unlock();
       if (!waiting) {
+        printf("%d waiting with termCount %d\n", args->threadId, termCount + 1);
         waiting = true;
         muxTermCount.lock();
         termCount++;
@@ -123,12 +130,14 @@ void* aStar(void *threadArgs) {
     pq.pop();
     openSet.erase(current.node);
     closedSet.insert(current.node);
+    // printf("%d processing %d\n", args->threadId, current.node);
     muxPq.unlock();
 
     // if waiting and pq is no longer empty
     if (waiting) {
       waiting = false;
       muxTermCount.lock();
+      printf("%d no longer waiting \n", args->threadId);
       termCount--;
       muxTermCount.unlock();
     }
@@ -138,20 +147,33 @@ void* aStar(void *threadArgs) {
     muxPath.unlock();
 
     // solution found
-    if (current.node == args->target && current.cost < curPathCost) {
+    if (current.node == args->target) {
       muxCameFrom.lock();
-      path = reconstructPath(current.node);
-      pathCost = current.cost;
-      int start = path.back();
+      std::vector<int> newPath = reconstructPath(current.node);
+      int newPathCost = current.cost;
+      printf("%d found path with cost %d\n", args->threadId, pathCost);
       muxCameFrom.unlock();
-      continue;
+      while (newPath.back() != args->source) {
+        muxCameFrom.lock();
+        std::vector<int> newPath = reconstructPath(current.node);
+        int newPathCost = current.cost;
+        printf("%d found path with cost %d\n", args->threadId, pathCost);
+        muxCameFrom.unlock();
+      }
+      if (newPathCost < pathCost) {
+        path = newPath;
+        pathCost = newPathCost;
+      }
     }
 
     neighbors = getNeighbors(current.node, neighbors);
     for (int neighbor: neighbors) { 
+      // printf("%d processing %d\n", args->threadId, neighbor);
       muxScore.lock();
       int neighborScore = gScore.at(neighbor);
       int currentScore = gScore.at(current.node) + 1;
+      //printf("neighborScore %d\n", neighborScore);
+      // printf("currentScore %d\n", currentScore);
       muxScore.unlock();
       muxPq.lock();
       bool inClosed = closedSet.find(neighbor) != closedSet.end();
@@ -160,9 +182,13 @@ void* aStar(void *threadArgs) {
       int neighborfScore = currentScore + h(neighbor, args->target);
       if (inClosed) {
         if (currentScore < neighborScore) {
+          muxScore.lock();
+          gScore.erase(neighbor);
+          gScore.emplace(neighbor, currentScore);
+          muxScore.unlock();  
           muxPq.lock();
           closedSet.erase(neighbor);
-          openSet.emplace(neighbor);
+          openSet.insert(neighbor);
           pq.push({neighborfScore, neighbor});
           muxPq.unlock();
         } else {
@@ -170,23 +196,31 @@ void* aStar(void *threadArgs) {
         }
       } else {
           if (!inOpen) {
+            muxScore.lock();
+            gScore.erase(neighbor);
+            gScore.emplace(neighbor, currentScore);
+            muxScore.unlock();  
             muxPq.lock();
-            openSet.emplace(neighbor);
+            openSet.insert(neighbor);
             pq.push({neighborfScore, neighbor});
             muxPq.unlock();
           } else if (currentScore >= neighborScore) {
               continue;
           }
       }
-
-      muxScore.lock();
-      gScore.erase(neighbor);
-      gScore.emplace(neighbor, currentScore);
-      muxScore.unlock();  
-      
       
       muxCameFrom.lock();
-      cameFrom.emplace(neighbor, current.node);
+      // if the neighbor is your parent, you cannot be its parent??
+      if (cameFrom.find(current.node) != cameFrom.end()) {
+        // printf("parent: %d child: %d\n", current.node, neighbor);
+        if (cameFrom.at(current.node) != neighbor) {
+          cameFrom.erase(neighbor);
+          cameFrom.emplace(neighbor, current.node);
+        }
+      } else {
+        cameFrom.erase(neighbor);
+        cameFrom.emplace(neighbor, current.node);
+      }
       muxCameFrom.unlock();
       
     }
@@ -265,7 +299,7 @@ int main(int argc, char *argv[]) {
   openSet.insert(source);
 
   // gScore represents the cost of the cheapest path from start to current node
-  gScore.insert({source, 0});
+  gScore.emplace(source, 0);
   
   // initialize all other nodes to have an inf g score 
   for (int i = 0; i < graph->dim; i++) {

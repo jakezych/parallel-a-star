@@ -10,16 +10,15 @@ public class PathGrapher extends JFrame {
 
   private String inputFileName = null;
   private String outputFileName = null;
-  private int width = 800;
-  private int height = 800;
+  private int width = 1000;
+  private int height = 1000;
   private int gridRows;
   private int gridCols;
 
   private int[][] grid; 
 
   private static final int margin = 25;
-  private static final int outlineWidth = 1;
-
+  private static final int outlineWidth = 0;
   private static final Color obstacleColor = Color.black;
   private static final Color nodeColor = Color.LIGHT_GRAY;
   private static final Color outlineColor = Color.white;
@@ -123,7 +122,6 @@ public class PathGrapher extends JFrame {
         String[] elems = line.split(" ");
         for (int j = 0; j < dim; j++) {
           int node = Character.getNumericValue(elems[j].charAt(0));
-          System.out.println("i: " + i + " j: " + j + " node: " + node);
           this.grid[i][j] = node;
         }
       }
@@ -150,7 +148,6 @@ public class PathGrapher extends JFrame {
         int commaIndex = points[i].indexOf(",");
         String rowString = points[i].substring(1, commaIndex);
         String colString = points[i].substring(commaIndex + 1, points[i].length() - 1);
-        System.out.println("row string: " + rowString + " col string: " + colString);
         int row = Integer.parseInt(rowString);
         int col = Integer.parseInt(colString);
         // path is represented by 2s in the grid 
