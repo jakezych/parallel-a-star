@@ -146,12 +146,6 @@ void* aStar(void *threadArgs) {
       std::vector<int> newPath = reconstructPath(current.node);
       int newPathCost = current.cost;
       muxCameFrom.unlock();
-      while (newPath.back() != args->source) {
-        muxCameFrom.lock();
-        std::vector<int> newPath = reconstructPath(current.node);
-        int newPathCost = current.cost;
-        muxCameFrom.unlock();
-      }
       if (newPathCost < pathCost) {
         path = newPath;
         pathCost = newPathCost;
