@@ -245,7 +245,6 @@ int main(int argc, char *argv[]) {
   x2 = std::stoi(argv[7]);
   y2 = std::stoi(argv[8]);
   graph = readGraph(x1, y1, x2, y2, inputFilename);
-  printf("(%d, %d) to (%d, %d)\n", x1, y1, x2, y2);
   
   const static int MAX_THREADS = 32;
 
@@ -259,7 +258,6 @@ int main(int argc, char *argv[]) {
 
   int source = x1*graph->dim + y1;
   int target = x2*graph->dim + y2;
-  printf("source: %d, target: %d\n", source, target);
 
   for (int i = 0; i < numThreads; i++) {
     args[i].threadId = i;

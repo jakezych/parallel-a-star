@@ -13,15 +13,21 @@ import (
 
 const MAX_THREADS = 32
 
-type currNeighbor struct {
+type pair struct {
 	current  int
 	neighbor int
+}
+
+type boolpair struct {
+	one bool
+	two bool
 }
 
 type threadInfo struct {
 	graph             *goutil.Graph
 	pq                goutil.PriorityQueue
 	openSet           map[int]struct{}
+	closedSet         map[int]struct{}
 	cameFrom          map[int]int
 	gScore            map[int]int
 	path              []int
@@ -36,13 +42,17 @@ type threadInfo struct {
 	respondWait       chan *goutil.NodeInfo
 	checkReconstruct  chan *goutil.NodeInfo
 	respondReconstuct chan bool
-	checkScore        chan currNeighbor
-	respondScore      chan int
-	checkCameFrom     chan currNeighbor
+	checkScore        chan pair
+	respondScore      chan pair
+	checkCameFrom     chan pair
 	respondCameFrom   chan bool
-	checkPush         chan currNeighbor
+	checkPush         chan pair
 	respondPush       chan bool
 	killChan          chan bool
+	checkSets         chan int
+	respondSets       chan boolpair
+	checkGScore       chan pair
+	respondGScore     chan bool
 }
 
 func h(source, target int, graph *goutil.Graph) int {
@@ -52,6 +62,8 @@ func h(source, target int, graph *goutil.Graph) int {
 	targetC := float64(target % graph.Dim)
 	// euclidian distance
 	return int(math.Sqrt(math.Abs(sourceR-targetR)*math.Abs(sourceR-targetR) + math.Abs(sourceC-targetC)*math.Abs(sourceC-targetC)))
+	// // manhattan distance
+	// return int(math.Abs(sourceR-targetR) + math.Abs(sourceC-targetC))
 }
 
 func reconstructPath(cameFrom map[int]int, current int) []int {
@@ -62,7 +74,6 @@ func reconstructPath(cameFrom map[int]int, current int) []int {
 			break
 		}
 		current = cameFrom[current]
-		// fmt.Println("current =", current)
 		path = append(path, current)
 	}
 	return path
@@ -92,21 +103,20 @@ func getNeighbors(graph *goutil.Graph, current int) []int {
 }
 
 func astar(source, target int, data *threadInfo) {
-	fmt.Println("launched astar")
 	var neighbors []int
 	waiting := false
 	for {
+		// check whether all threads have terminated
 		data.checkDone <- true
 		result := <-data.respondDone
 		if result {
 			break
 		}
-		fmt.Println("not done yet")
 
 		data.checkCost <- true
 		currCost := <-data.respondCost
-		fmt.Println("curr cost = ", currCost)
 
+		//if a thread sees an empty queue, enter waiting
 		data.checkWait <- currCost
 		res := <-data.respondWait
 		if res == nil {
@@ -114,7 +124,6 @@ func astar(source, target int, data *threadInfo) {
 				waiting = true
 				data.incrCount <- true
 			}
-			fmt.Println("waiting")
 			continue
 		}
 		if waiting {
@@ -124,29 +133,46 @@ func astar(source, target int, data *threadInfo) {
 
 		data.checkCost <- true
 		currCost = <-data.respondCost
-		fmt.Println("not waiting, curr cost = ", currCost)
 
 		if res.Node == target && res.Cost < currCost {
 			data.checkReconstruct <- res
 			<-data.respondReconstuct
-			fmt.Println("found target")
+			continue
 		}
 
 		neighbors = getNeighbors(data.graph, res.Node)
 		for _, neighbor := range neighbors {
-			data.checkScore <- currNeighbor{res.Node, neighbor}
-			currentScore := <-data.respondScore
-			if currentScore == -1 {
-				continue
+			data.checkScore <- pair{res.Node, neighbor}
+			score := <-data.respondScore
+
+			data.checkSets <- neighbor
+			sets := <-data.respondSets
+
+			neighborFScore := score.current + h(neighbor, target, data.graph)
+
+			if sets.one {
+				if score.current < score.neighbor {
+					data.checkGScore <- pair{score.current, neighbor}
+					<-data.respondGScore
+					data.checkPush <- pair{neighborFScore, neighbor}
+					<-data.respondPush
+				} else {
+					continue
+				}
+			} else {
+				if !sets.two {
+					data.checkGScore <- pair{score.current, neighbor}
+					<-data.respondGScore
+					data.checkPush <- pair{neighborFScore, neighbor}
+					<-data.respondPush
+				} else if score.current >= score.neighbor {
+					continue
+				}
 			}
 
-			neighborFScore := currentScore + h(neighbor, target, data.graph)
-
-			data.checkCameFrom <- currNeighbor{res.Node, neighbor}
+			data.checkCameFrom <- pair{res.Node, neighbor}
 			<-data.respondCameFrom
 
-			data.checkPush <- currNeighbor{neighborFScore, neighbor}
-			<-data.respondPush
 		}
 	}
 }
@@ -174,7 +200,7 @@ func checkTermination(data *threadInfo, done chan bool, numThreads int) {
 }
 
 func getCost(data *threadInfo) {
-	currCost := 0
+	currCost := math.MaxInt64
 	for {
 		select {
 		case <-data.checkCost:
@@ -193,22 +219,25 @@ func getWaiting(data *threadInfo) {
 		case currCost := <-data.checkWait:
 			if data.pq.Len() == 0 || data.pq[0].Cost >= currCost {
 				data.respondWait <- nil
-				fmt.Println("gonna wait, nothin to process, pq len = ", data.pq.Len(), "pq cost = ", data.pq[0].Cost, "currCost = ", currCost)
 			} else {
 				current := heap.Pop(&data.pq).(*goutil.NodeInfo)
 				delete(data.openSet, current.Node)
+				data.closedSet[current.Node] = struct{}{}
 				data.respondWait <- current
 			}
 		case s := <-data.checkPush:
-			if _, exists := data.openSet[s.neighbor]; !exists {
-				data.openSet[s.neighbor] = struct{}{}
-				node := &goutil.NodeInfo{
-					Node: s.neighbor,
-					Cost: s.current,
-				}
-				heap.Push(&data.pq, node)
+			delete(data.closedSet, s.neighbor)
+			data.openSet[s.neighbor] = struct{}{}
+			node := &goutil.NodeInfo{
+				Node: s.neighbor,
+				Cost: s.current,
 			}
+			heap.Push(&data.pq, node)
 			data.respondPush <- true
+		case neighbor := <-data.checkSets:
+			_, existsClosed := data.closedSet[neighbor]
+			_, existsOpen := data.openSet[neighbor]
+			data.respondSets <- boolpair{existsClosed, existsOpen}
 		case <-data.killChan:
 			return
 		}
@@ -230,15 +259,10 @@ func reconstruct(data *threadInfo) {
 				path = append(path, current)
 			}
 			data.path = path
-			fmt.Println("SET PATH of len", len(path))
 			data.setCost <- curr.Cost
 			data.respondReconstuct <- true
 		case s := <-data.checkCameFrom:
-			if elem, exists := data.cameFrom[s.current]; exists && elem != s.neighbor {
-				data.cameFrom[s.neighbor] = s.current
-			} else {
-				data.cameFrom[s.neighbor] = s.current
-			}
+			data.cameFrom[s.neighbor] = s.current
 			data.respondCameFrom <- true
 		case <-data.killChan:
 			return
@@ -252,12 +276,10 @@ func score(data *threadInfo) {
 		case s := <-data.checkScore:
 			neighborScore := data.gScore[s.neighbor]
 			currentScore := data.gScore[s.current] + 1
-			if currentScore < neighborScore {
-				data.gScore[s.neighbor] = currentScore
-				data.respondScore <- currentScore
-			} else {
-				data.respondScore <- -1
-			}
+			data.respondScore <- pair{currentScore, neighborScore}
+		case s := <-data.checkGScore:
+			data.gScore[s.neighbor] = s.current
+			data.respondGScore <- true
 		case <-data.killChan:
 			return
 		}
@@ -295,6 +317,7 @@ func main() {
 		graph:             g,
 		pq:                make(goutil.PriorityQueue, 0),
 		openSet:           make(map[int]struct{}),
+		closedSet:         make(map[int]struct{}),
 		cameFrom:          make(map[int]int),
 		gScore:            make(map[int]int),
 		path:              make([]int, 0),
@@ -309,13 +332,17 @@ func main() {
 		respondWait:       make(chan *goutil.NodeInfo),
 		checkReconstruct:  make(chan *goutil.NodeInfo),
 		respondReconstuct: make(chan bool),
-		checkScore:        make(chan currNeighbor),
-		respondScore:      make(chan int),
-		checkCameFrom:     make(chan currNeighbor),
+		checkScore:        make(chan pair),
+		respondScore:      make(chan pair),
+		checkCameFrom:     make(chan pair),
 		respondCameFrom:   make(chan bool),
-		checkPush:         make(chan currNeighbor),
+		checkPush:         make(chan pair),
 		respondPush:       make(chan bool),
 		killChan:          make(chan bool),
+		checkSets:         make(chan int),
+		respondSets:       make(chan boolpair),
+		checkGScore:       make(chan pair),
+		respondGScore:     make(chan bool),
 	}
 	heap.Init(&data.pq)
 
@@ -324,7 +351,6 @@ func main() {
 		Node: source,
 		Cost: h(source, target, g),
 	}
-	fmt.Println("first node cost = ", firstNode.Cost)
 	heap.Push(&data.pq, firstNode)
 	data.openSet[source] = struct{}{}
 
