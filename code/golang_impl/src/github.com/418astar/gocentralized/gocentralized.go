@@ -18,12 +18,6 @@ type pair struct {
 	neighbor int
 }
 
-type setStruct struct {
-	neighborFScore int
-	neighbor       int
-	closed         bool
-}
-
 type boolpair struct {
 	one bool
 	two bool
@@ -52,7 +46,7 @@ type threadInfo struct {
 	respondScore      chan pair
 	checkCameFrom     chan pair
 	respondCameFrom   chan bool
-	checkPush         chan setStruct
+	checkPush         chan pair
 	respondPush       chan bool
 	killChan          chan bool
 	checkSets         chan int
@@ -68,6 +62,8 @@ func h(source, target int, graph *goutil.Graph) int {
 	targetC := float64(target % graph.Dim)
 	// euclidian distance
 	return int(math.Sqrt(math.Abs(sourceR-targetR)*math.Abs(sourceR-targetR) + math.Abs(sourceC-targetC)*math.Abs(sourceC-targetC)))
+	// // manhattan distance
+	// return int(math.Abs(sourceR-targetR) + math.Abs(sourceC-targetC))
 }
 
 func reconstructPath(cameFrom map[int]int, current int) []int {
@@ -78,7 +74,6 @@ func reconstructPath(cameFrom map[int]int, current int) []int {
 			break
 		}
 		current = cameFrom[current]
-		// fmt.Println("current =", current)
 		path = append(path, current)
 	}
 	return path
@@ -108,21 +103,20 @@ func getNeighbors(graph *goutil.Graph, current int) []int {
 }
 
 func astar(source, target int, data *threadInfo) {
-	fmt.Println("launched astar")
 	var neighbors []int
 	waiting := false
 	for {
+		// check whether all threads have terminated
 		data.checkDone <- true
 		result := <-data.respondDone
 		if result {
 			break
 		}
-		fmt.Println("not done yet")
 
 		data.checkCost <- true
 		currCost := <-data.respondCost
-		fmt.Println("curr cost = ", currCost)
 
+		//if a thread sees an empty queue, enter waiting
 		data.checkWait <- currCost
 		res := <-data.respondWait
 		if res == nil {
@@ -130,7 +124,6 @@ func astar(source, target int, data *threadInfo) {
 				waiting = true
 				data.incrCount <- true
 			}
-			fmt.Println("waiting")
 			continue
 		}
 		if waiting {
@@ -140,12 +133,10 @@ func astar(source, target int, data *threadInfo) {
 
 		data.checkCost <- true
 		currCost = <-data.respondCost
-		fmt.Println("not waiting, curr cost = ", currCost)
 
 		if res.Node == target && res.Cost < currCost {
 			data.checkReconstruct <- res
 			<-data.respondReconstuct
-			fmt.Println("found target")
 			continue
 		}
 
@@ -161,22 +152,23 @@ func astar(source, target int, data *threadInfo) {
 
 			if sets.one {
 				if score.current < score.neighbor {
-					data.checkPush <- setStruct{neighborFScore, neighbor, true}
+					data.checkGScore <- pair{score.current, neighbor}
+					<-data.respondGScore
+					data.checkPush <- pair{neighborFScore, neighbor}
 					<-data.respondPush
 				} else {
 					continue
 				}
 			} else {
 				if !sets.two {
-					data.checkPush <- setStruct{neighborFScore, neighbor, false}
+					data.checkGScore <- pair{score.current, neighbor}
+					<-data.respondGScore
+					data.checkPush <- pair{neighborFScore, neighbor}
 					<-data.respondPush
 				} else if score.current >= score.neighbor {
 					continue
 				}
 			}
-
-			data.checkGScore <- pair{score.current, neighbor}
-			<-data.respondGScore
 
 			data.checkCameFrom <- pair{res.Node, neighbor}
 			<-data.respondCameFrom
@@ -192,7 +184,6 @@ func checkTermination(data *threadInfo, done chan bool, numThreads int) {
 		case <-data.incrCount:
 			count++
 			if count == numThreads {
-				fmt.Println("count = ", count)
 				done <- true
 				return
 			}
@@ -227,10 +218,6 @@ func getWaiting(data *threadInfo) {
 		select {
 		case currCost := <-data.checkWait:
 			if data.pq.Len() == 0 || data.pq[0].Cost >= currCost {
-				fmt.Println("waiting, len = ", data.pq.Len())
-				if data.pq.Len() > 0 {
-					fmt.Println("waiting, cost is ", data.pq[0].Cost)
-				}
 				data.respondWait <- nil
 			} else {
 				current := heap.Pop(&data.pq).(*goutil.NodeInfo)
@@ -239,13 +226,11 @@ func getWaiting(data *threadInfo) {
 				data.respondWait <- current
 			}
 		case s := <-data.checkPush:
-			if s.closed {
-				delete(data.closedSet, s.neighbor)
-			}
+			delete(data.closedSet, s.neighbor)
 			data.openSet[s.neighbor] = struct{}{}
 			node := &goutil.NodeInfo{
 				Node: s.neighbor,
-				Cost: s.neighborFScore,
+				Cost: s.current,
 			}
 			heap.Push(&data.pq, node)
 			data.respondPush <- true
@@ -274,7 +259,6 @@ func reconstruct(data *threadInfo) {
 				path = append(path, current)
 			}
 			data.path = path
-			fmt.Println("SET PATH of len", len(path))
 			data.setCost <- curr.Cost
 			data.respondReconstuct <- true
 		case s := <-data.checkCameFrom:
@@ -352,7 +336,7 @@ func main() {
 		respondScore:      make(chan pair),
 		checkCameFrom:     make(chan pair),
 		respondCameFrom:   make(chan bool),
-		checkPush:         make(chan setStruct),
+		checkPush:         make(chan pair),
 		respondPush:       make(chan bool),
 		killChan:          make(chan bool),
 		checkSets:         make(chan int),
@@ -367,7 +351,6 @@ func main() {
 		Node: source,
 		Cost: h(source, target, g),
 	}
-	fmt.Println("first node cost = ", firstNode.Cost)
 	heap.Push(&data.pq, firstNode)
 	data.openSet[source] = struct{}{}
 
