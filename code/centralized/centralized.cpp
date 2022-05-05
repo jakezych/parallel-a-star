@@ -84,11 +84,9 @@ std::vector<int> getNeighbors(int current, std::vector<int> neighbors) {
 std::vector<int> reconstructPath(int current) {
   std::vector<int> path;
   path.emplace_back(current);
-  printf("path %d current \n", current);
   while (cameFrom.find(current) != cameFrom.end()) {
     current = cameFrom.at(current);
     path.emplace_back(current);
-    printf("path %d current \n", current);
   }
   return path;
 }
@@ -102,7 +100,6 @@ void* aStar(void *threadArgs) {
     muxTermCount.lock();
     // check whether all threads have terminated 
     if (termCount == args->numThreads) {
-      printf("%d exiting\n", args->threadId);
       muxTermCount.unlock();
       break;
     }
@@ -112,12 +109,10 @@ void* aStar(void *threadArgs) {
     int curPathCost = pathCost;
     muxPath.unlock();
     // if a thread sees an empty queue, enters waiting state
-    // printf("%d acquiring lock before empty check\n", args->threadId);
     muxPq.lock();
     if ((pq.empty() || pq.top().cost >= curPathCost)) {
       muxPq.unlock();
       if (!waiting) {
-        printf("%d waiting with termCount %d\n", args->threadId, termCount + 1);
         waiting = true;
         muxTermCount.lock();
         termCount++;
@@ -137,7 +132,6 @@ void* aStar(void *threadArgs) {
     if (waiting) {
       waiting = false;
       muxTermCount.lock();
-      printf("%d no longer waiting \n", args->threadId);
       termCount--;
       muxTermCount.unlock();
     }
@@ -151,13 +145,11 @@ void* aStar(void *threadArgs) {
       muxCameFrom.lock();
       std::vector<int> newPath = reconstructPath(current.node);
       int newPathCost = current.cost;
-      printf("%d found path with cost %d\n", args->threadId, pathCost);
       muxCameFrom.unlock();
       while (newPath.back() != args->source) {
         muxCameFrom.lock();
         std::vector<int> newPath = reconstructPath(current.node);
         int newPathCost = current.cost;
-        printf("%d found path with cost %d\n", args->threadId, pathCost);
         muxCameFrom.unlock();
       }
       if (newPathCost < pathCost) {
@@ -168,12 +160,9 @@ void* aStar(void *threadArgs) {
 
     neighbors = getNeighbors(current.node, neighbors);
     for (int neighbor: neighbors) { 
-      // printf("%d processing %d\n", args->threadId, neighbor);
       muxScore.lock();
       int neighborScore = gScore.at(neighbor);
       int currentScore = gScore.at(current.node) + 1;
-      //printf("neighborScore %d\n", neighborScore);
-      // printf("currentScore %d\n", currentScore);
       muxScore.unlock();
       muxPq.lock();
       bool inClosed = closedSet.find(neighbor) != closedSet.end();
@@ -210,17 +199,7 @@ void* aStar(void *threadArgs) {
       }
       
       muxCameFrom.lock();
-      // if the neighbor is your parent, you cannot be its parent??
-      if (cameFrom.find(current.node) != cameFrom.end()) {
-        // printf("parent: %d child: %d\n", current.node, neighbor);
-        if (cameFrom.at(current.node) != neighbor) {
-          cameFrom.erase(neighbor);
-          cameFrom.emplace(neighbor, current.node);
-        }
-      } else {
-        cameFrom.erase(neighbor);
-        cameFrom.emplace(neighbor, current.node);
-      }
+      cameFrom.emplace(neighbor, current.node);
       muxCameFrom.unlock();
       
     }
