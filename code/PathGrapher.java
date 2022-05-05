@@ -10,8 +10,8 @@ public class PathGrapher extends JFrame {
 
   private String inputFileName = null;
   private String outputFileName = null;
-  private int width = 1000;
-  private int height = 1000;
+  private int width = 800;
+  private int height = 800;
   private int gridRows;
   private int gridCols;
 

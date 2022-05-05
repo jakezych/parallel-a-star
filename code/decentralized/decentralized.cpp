@@ -94,7 +94,6 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
   std::unordered_set<int> closedSet;
   int pathCost = INT_MAX;
   int validPathExists = 0;
-  
   // initialize open set for the recipient processor
   if (procID == computeRecipient(nproc, 0)) {
     pq.push({h(source, target), source});
@@ -318,7 +317,7 @@ int main(int argc, char *argv[]) {
   } while (opt != -1);
 
   if (inputFilename == NULL || argc < 7) {
-      printf("Usage: %s -f <filename> <x1> <y1> <x2> <y2>\n", argv[0]);
+      printf("Usage: mpirun -np <num_procs> %s -f <filename> <x1> <y1> <x2> <y2>\n", argv[0]);
       MPI_Finalize();
       return -1;
   }
