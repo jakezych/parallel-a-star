@@ -35,11 +35,14 @@ def readSolution(args):
     # output file
     output = open(args['output'], 'r')
     lines = output.readlines()
-    if len(lines) < 2:
-        LOG.error('''output file contains has less than 2 lines''')
+    if len(lines) < 1:
+        LOG.error('''output file contains has less than 1 line''')
         return False, 0, []
-    size = lines[0]
+    size = int(lines[0])
     path = []
+    # no solution found
+    if len(lines) == 1:
+      return True, 0, []
     for node in lines[1].split(' '):
       if len(node) == 0:
         break
@@ -92,9 +95,13 @@ def isAdjacent(v1, v2):
   return (abs(v1[0] - v2[0]) != 1) or (abs(v1[1] - v2[1]) != 1)
 
 def validatePath(size, path, grid):
-  if size == len(path):
+  if size != len(path):
     LOG.error(f'''outputted size and true path length mismatch size: {size} != length of path: {len(path)}''')
     return False
+  # no solution
+  if size == 0:
+    return True
+    
   if len(path) == 1: 
     LOG.error('''path only contains a single element''')
     return False
@@ -187,12 +194,17 @@ def dijkstra(grid, source, target):
           dist[neighbor] = newCost
           prev[neighbor] = node
           heapq.heappush(pq, NodeInfo(neighbor, newCost))
+          openSet.add(node)
 
   return []
 
 def checkOptimality(path, grid):
-  source = path[0]
-  target = path[-1]
+  if len(path) > 0:
+    source = path[0]
+    target = path[-1]
+  else:
+    source = (0, 0)
+    target = (len(grid) - 1, len(grid) - 1)
   optimalPath = dijkstra(grid, source, target)
   if len(optimalPath) == 0:
     print("no solution")

@@ -19,7 +19,9 @@ int h(int source, int target) {
   int targetR = target / graph->dim;
   int targetC = target % graph->dim;
   // euclidian distance
-  return sqrt(std::abs(sourceR - targetR)*std::abs(sourceR - targetR) + std::abs(sourceC - targetC)*std::abs(sourceC - targetC));
+  // return sqrt(std::abs(sourceR - targetR)*std::abs(sourceR - targetR) + std::abs(sourceC - targetC)*std::abs(sourceC - targetC));
+  // manhatten distance 
+  return std::abs(sourceR - targetR) + std::abs(sourceC - targetC);
 }
 
 /* 
