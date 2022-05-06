@@ -94,6 +94,7 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
   std::unordered_set<int> closedSet;
   int pathCost = INT_MAX;
   int validPathExists = 0;
+  double startTime = MPI_Wtime();
   // initialize open set for the recipient processor
   if (procID == computeRecipient(nproc, 0)) {
     pq.push({h(source, target), source});
@@ -229,6 +230,8 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
 
     // solution found
     if (current == target) {
+      double endSearchTime = MPI_Wtime();
+      printf("Total time to find target node for %d: %f\n", procID, endSearchTime-startTime);
       reconstructPath(cameFrom, current, path);
       int newPathCost = path->size();
       // while the path is invalid
@@ -261,6 +264,8 @@ void aStar(int source, int target, std::shared_ptr<graph_t> graph, std::vector<i
       // only broadcast if a better solution is found
       if (newPathCost < pathCost) {
         // broadcast new path cost 
+        double endPathTime = MPI_Wtime();
+        printf("Total time to find path for %d: %f\n", procID, endPathTime-startTime);
         for (int i = 0; i < nproc; i++) {
           MPI_Isend(&newPathCost, 1, MPI_INT, i, nproc+1, MPI_COMM_WORLD, &costRequests[i]);
         }
